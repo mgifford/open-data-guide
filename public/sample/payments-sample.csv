@@ -1,0 +1,11 @@
+state,payment_category,amount_usd,payment_date,recipient_type
+CA,Consulting fee,1250.00,2025-01-15,Physician
+CA,Food and beverage,84.50,2025-02-03,Physician
+NY,Research,9500.00,2025-02-18,Teaching hospital
+TX,Travel and lodging,640.00,2025-03-02,Physician
+NY,Consulting fee,2200.00,2025-03-09,Physician
+CA,Education,420.00,2025-04-11,Non-physician practitioner
+TX,Food and beverage,95.75,2025-05-21,Physician
+WA,Research,4800.00,2025-06-14,Teaching hospital
+WA,Education,310.00,2025-07-01,Physician
+TX,Consulting fee,1750.00,2025-07-22,Non-physician practitioner

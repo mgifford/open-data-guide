@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Explore and ask reproducible questions of open datasets in your browser." />
+    <title>Open Data Guide</title>
+    <script type="module" src="/src/main.js"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to main content</a>
+    <header class="site-header">
+      <div>
+        <p class="eyebrow">Local-first public data exploration</p>
+        <h1>Open Data Guide</h1>
+        <p class="lede">Turn a dataset URL into an understandable, inspectable question.</p>
+      </div>
+      <p class="privacy-note">Data is queried in your browser. No account or application server is required.</p>
+    </header>
+
+    <nav class="workspace-nav" aria-label="Workspace areas">
+      <a href="#discover">Discover</a>
+      <a href="#dataset-section">Current dataset</a>
+      <a href="#question-section">Ask and review</a>
+      <a href="#history">History</a>
+      <a href="#saved-heading">Saved workspace</a>
+      <a href="#storage">Storage and AI settings</a>
+    </nav>
+
+    <main id="main" class="layout">
+      <section id="discover" class="panel panel-accent" aria-labelledby="start-heading">
+        <h2 id="start-heading">Open a dataset</h2>
+        <p>Paste a direct CSV, JSON, or Parquet URL, or a dataset page from a public data catalog.</p>
+        <form id="dataset-form">
+          <label for="dataset-url">Dataset URL</label>
+          <div class="input-row">
+            <input id="dataset-url" name="dataset-url" type="url" required
+              placeholder="https://example.gov/dataset/example" autocomplete="url" />
+            <button type="submit">Inspect dataset</button>
+          </div>
+        </form>
+        <p class="sample-line"><button class="button-secondary" id="sample-button" type="button">Try the included sample</button></p>
+        <div id="status" class="status" role="status" aria-live="polite"></div>
+      </section>
+
+      <section class="panel" aria-labelledby="catalog-heading">
+        <h2 id="catalog-heading">Search a configured catalog</h2>
+        <p>Only catalogs you explicitly add are searched. Browser requests still depend on the catalog allowing cross-origin access.</p>
+        <form id="catalog-form">
+          <label for="catalog-url">Data catalog URL</label>
+          <div class="input-row">
+            <input id="catalog-url" name="catalog-url" type="url" placeholder="https://data.example.gov" autocomplete="url" />
+            <button type="submit">Search catalog</button>
+          </div>
+          <label for="catalog-query">Search terms</label>
+          <input id="catalog-query" name="catalog-query" type="search" required />
+        </form>
+        <div id="catalog-results" aria-live="polite"></div>
+      </section>
+
+      <section class="panel" aria-labelledby="cnra-heading">
+        <h2 id="cnra-heading">CNRA exploration starters</h2>
+        <p>These public data catalog records cover water, groundwater, infrastructure, and wildlife. Open one to inspect its metadata before choosing a resource.</p>
+        <ul class="starter-list">
+          <li><a href="https://data.cnra.ca.gov/dataset/periodic-groundwater-level-measurements">Periodic Groundwater Level Measurements</a><span>Ask: How many measurements are reported by county or site?</span></li>
+          <li><a href="https://data.cnra.ca.gov/dataset/water-quality-data">Water Quality Data</a><span>Ask: Which analytes and locations have the most observations?</span></li>
+          <li><a href="https://data.cnra.ca.gov/dataset/state-water-project-monthly-report-of-operations">Daily SWP Reservoir Elevation and Storage Data</a><span>Ask: How does storage change over time?</span></li>
+          <li><a href="https://data.cnra.ca.gov/dataset/dry-well-reporting-system-data">Dry Well Reporting System Data</a><span>Ask: How many reports are recorded by county and year?</span></li>
+          <li><a href="https://data.cnra.ca.gov/dataset/bobcat-camera-trap-detections-cdfw-ds3402">Bobcat Camera Trap Detections</a><span>Ask: How many detections are recorded by study area?</span></li>
+        </ul>
+      </section>
+
+      <section id="dataset-section" class="panel" aria-labelledby="dataset-heading" hidden>
+        <div class="section-heading">
+          <div>
+            <p id="platform-label" class="eyebrow"></p>
+            <h2 id="dataset-heading"></h2>
+          </div>
+          <button id="save-button" class="button-secondary" type="button">Save marker in this browser</button>
+        </div>
+        <p id="dataset-description"></p>
+        <dl id="dataset-metadata" class="metadata"></dl>
+        <div id="resource-control"></div>
+        <div id="size-warning" class="notice" hidden></div>
+        <button id="load-resource-button" type="button">Load selected resource</button>
+      </section>
+
+      <section id="explore-section" class="panel" aria-labelledby="explore-heading" hidden>
+        <h2 id="explore-heading">Understand this resource</h2>
+        <div id="profile-summary" class="summary-grid"></div>
+        <details>
+          <summary>Field definitions and inferred types</summary>
+          <div id="fields-table"></div>
+        </details>
+        <details>
+          <summary>Preview rows</summary>
+          <div id="preview-table"></div>
+        </details>
+      </section>
+
+      <section id="question-section" class="panel" aria-labelledby="question-heading" hidden>
+        <h2 id="question-heading">Ask a reproducible question</h2>
+        <p>This draft understands constrained questions such as <q>count by state</q> or <q>average amount by category</q>. Review the interpretation before running it.</p>
+        <form id="question-form">
+          <label for="question">Question</label>
+          <div class="input-row">
+            <input id="question" name="question" type="text" required />
+            <button type="submit">Interpret question</button>
+          </div>
+        </form>
+        <form id="plan-form" class="plan-form" hidden>
+          <fieldset>
+            <legend>Review the query plan</legend>
+            <label for="aggregation">Calculation</label>
+            <select id="aggregation" name="aggregation">
+              <option value="count">Count rows</option>
+              <option value="distinct_count">Count distinct values</option>
+              <option value="sum">Sum</option>
+              <option value="avg">Average</option>
+              <option value="median">Median</option>
+              <option value="min">Minimum</option>
+              <option value="max">Maximum</option>
+            </select>
+            <label for="measure">Measure</label>
+            <select id="measure" name="measure"></select>
+            <label for="dimension">Group by</label>
+            <select id="dimension" name="dimension"></select>
+            <button type="submit">Run verified query</button>
+          </fieldset>
+        </form>
+        <div id="query-output" hidden>
+          <h3>Result</h3>
+          <p id="result-explanation"></p>
+          <section class="story" aria-labelledby="story-heading">
+            <h4 id="story-heading">What this result says</h4>
+            <p id="story-text"></p>
+          </section>
+          <div id="result-table"></div>
+          <div id="chart" class="chart" aria-labelledby="chart-heading"></div>
+          <details>
+            <summary id="chart-heading">Query and provenance</summary>
+            <pre id="sql-output"></pre>
+            <dl id="provenance" class="metadata"></dl>
+          </details>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="saved-heading">
+        <div class="section-heading">
+          <div>
+            <h2 id="saved-heading">Saved datasets</h2>
+            <p>These are markers in this browser, not copies of the source files.</p>
+          </div>
+          <button id="semantic-button" class="button-secondary" type="button">Check browser AI support</button>
+        </div>
+        <p class="model-note">The capability check does not download a model. If the browser has no suitable built-in option, you can separately choose an Apache-2.0 MiniLM model from Hugging Face.</p>
+        <div id="capability-output"></div>
+        <div id="saved-list"></div>
+        <div id="related-list" aria-live="polite"></div>
+      </section>
+
+      <section id="history" class="panel" aria-labelledby="history-heading">
+        <h2 id="history-heading">Analysis history</h2>
+        <form id="history-search-form">
+          <label for="history-query">Search saved questions</label>
+          <div class="input-row">
+            <input id="history-query" name="history-query" type="search" />
+            <button type="submit">Search history</button>
+          </div>
+        </form>
+        <div id="history-list"></div>
+      </section>
+
+      <section id="storage" class="panel" aria-labelledby="storage-heading">
+        <h2 id="storage-heading">Storage and AI settings</h2>
+        <p id="storage-summary">Workspace data stays in this browser. Source files are not copied into the workspace.</p>
+        <div class="saved-actions">
+          <button id="export-button" class="button-secondary" type="button">Export workspace</button>
+          <label class="file-button button-secondary" for="import-input">Import workspace</label>
+          <input id="import-input" type="file" accept="application/json" hidden />
+          <button id="clear-data-button" class="button-secondary" type="button">Delete local application data</button>
+        </div>
+        <div id="export-receipt" class="status" role="status" aria-live="polite" hidden></div>
+      </section>
+    </main>
+
+    <footer>
+      <p>Prototype software. Always inspect source documentation, units, suppression rules, and generated queries.</p>
+    </footer>
+  </body>
+</html>
