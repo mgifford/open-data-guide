@@ -12,6 +12,7 @@ import { renderTable } from "./render/table.js";
 import { renderChart } from "./render/chart.js";
 import { renderSchematic } from "./render/schematic.js";
 import { describeResult } from "./render/advisor.js";
+import { downloadText, resultsToCsv, resultsToJson } from "./render/export.js";
 import { shouldRefuseResource } from "./data/ingestion.js";
 
 const elements = Object.fromEntries([
@@ -19,7 +20,7 @@ const elements = Object.fromEntries([
   "dataset-description", "dataset-metadata", "platform-label", "resource-control", "size-warning",
   "load-resource-button", "save-button", "explore-section", "profile-summary", "fields-table",
   "preview-table", "quality-summary", "question-section", "question-form", "question", "question-interpret-button", "plan-form", "aggregation",
-  "measure", "dimension", "run-plan-button", "plan-review", "query-output", "result-explanation", "result-table", "chart", "sql-output",
+  "measure", "dimension", "run-plan-button", "plan-review", "query-output", "result-explanation", "result-table", "chart", "sql-output", "download-csv-button", "download-json-button",
     "schematic-view",
   "provenance", "saved-list", "related-list", "semantic-button", "capability-output",
   "catalog-form", "catalog-url", "catalog-query", "catalog-results", "history-search-form", "history-query", "history-list", "export-button",
@@ -40,6 +41,7 @@ let activePlannerProvenance = { modelBackend: "deterministic", modelIdentifier: 
 let plannerAbortController = null;
 let activePlan = null;
 let activePlanner = null;
+let currentResult = null;
 
 function resetPlannerProvenance() {
   activePlannerProvenance = { modelBackend: "deterministic", modelIdentifier: "", modelVersion: "" };
@@ -577,6 +579,7 @@ elements["plan-form"].addEventListener("submit", async (event) => {
     const sql = compilePlan(plan, currentFields);
     setStatus("Running the validated query in DuckDB-Wasm...");
     const rows = await runQuery(sql);
+    currentResult = { rows, plan, sql };
     elements["query-output"].hidden = false;
     renderSchematic(elements["schematic-view"], currentFields, currentQualities, currentResource);
     elements["result-explanation"].textContent = describeResult(plan, { kind: plan.dimension ? "bar" : "table" }, rows.length, rows.length);
@@ -631,6 +634,25 @@ elements["plan-form"].addEventListener("submit", async (event) => {
   } catch (error) {
     setStatus(error.message, "error");
   }
+});
+
+function resultMetadata() {
+  return {
+    dataset: currentDataset?.title || "",
+    resource: currentResource?.title || "",
+    sourceUrl: currentResource?.url || "",
+    calculatedAt: new Date().toISOString(),
+  };
+}
+
+elements["download-csv-button"].addEventListener("click", () => {
+  if (!currentResult) return;
+  downloadText("open-data-guide-results.csv", resultsToCsv(currentResult.rows), "text/csv;charset=utf-8");
+});
+
+elements["download-json-button"].addEventListener("click", () => {
+  if (!currentResult) return;
+  downloadText("open-data-guide-results.json", resultsToJson({ ...currentResult, metadata: resultMetadata() }), "application/json;charset=utf-8");
 });
 
 elements["save-button"].addEventListener("click", async () => {

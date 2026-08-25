@@ -14,6 +14,16 @@ for (const [label, filename, expectedField] of fixtures) {
     await page.getByRole("button", { name: "Load selected resource" }).click();
     await expect(page.getByRole("heading", { name: "Data quality before analysis" })).toBeVisible();
     await expect(page.getByRole("cell", { name: expectedField, exact: true })).toBeVisible();
+    await page.getByRole("textbox", { name: "Question", exact: true }).fill(`count by ${expectedField}`);
+    await page.getByRole("button", { name: "Interpret question" }).click();
+    await page.getByRole("button", { name: "Run verified query" }).click();
+    await expect(page.getByRole("heading", { name: "Dataset Overview" })).toBeVisible();
+    await expect(page.getByRole("table", { name: `Result for: count by ${expectedField}` })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Download CSV" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Download JSON" })).toBeVisible();
+    if (label === "bobcat" || label === "dry well") {
+      await expect(page.locator("#chart svg.marks")).toBeVisible();
+    }
     if (label === "dry well") {
       await page.getByRole("textbox", { name: "Question", exact: true }).fill("How have dry well reports changed over time?");
       await page.getByRole("button", { name: "Interpret question" }).click();

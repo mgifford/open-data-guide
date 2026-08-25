@@ -23,4 +23,11 @@ test("sample dataset reaches quality profile, table, chart, and SQL", async ({ p
   await expect(page.locator(`#${describedBy}`)).toContainText("chart of count by state");
   await page.getByText("Query and provenance").first().click();
   await expect(page.locator("#sql-output")).toContainText("GROUP BY");
+
+  const csvDownload = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download CSV" }).click();
+  await expect((await csvDownload).suggestedFilename()).toBe("open-data-guide-results.csv");
+  const jsonDownload = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download JSON" }).click();
+  await expect((await jsonDownload).suggestedFilename()).toBe("open-data-guide-results.json");
 });
