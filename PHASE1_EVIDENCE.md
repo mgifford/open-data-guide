@@ -33,7 +33,7 @@ Status: implementation complete for the bounded Phase 1 slice. Prepared: 2026-08
 
 - `npm ci`: passed.
 - `npm test`: 55 passing tests across 10 files.
-- `npm run test:browser`: 5 passing Chromium tests across the sample, three CNRA fixture flows, and postal/FIPS display.
+- `npm run test:browser`: 6 passing Chromium tests across the sample, three CNRA fixture flows, postal/FIPS display, and workspace reload/export.
 - CI installs Chromium before running the browser suite; local smoke testing uses installed Chrome when available.
 - `npm run build`: passed; existing Vite warning remains for chunks over 500 kB because of DuckDB-Wasm.
 - `get_errors` on touched source files: no errors.

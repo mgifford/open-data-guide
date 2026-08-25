@@ -16,7 +16,7 @@ Status: bounded local-workspace implementation complete; prepared 2026-08-25.
 
 - `npm audit --omit=optional --audit-level=moderate`: 0 vulnerabilities after upgrading Playwright to 1.55.1.
 - `npm test`: 55 passing tests across 10 files.
-- `npm run test:browser`: 5 passing Chromium tests, including the sample, three CNRA fixtures, and postal/FIPS preservation.
+- `npm run test:browser`: 6 passing Chromium tests, including the sample, three CNRA fixtures, postal/FIPS preservation, and history reload/export.
 - `npm run test:browser`: 5 passing Chromium tests.
 - `npm run build`: passed; existing Vite warning remains for DuckDB-Wasm chunks over 500 kB.
 - No external postal, Census, geocoding, MCP, cloud inference, telemetry, or automatic join behavior was added.

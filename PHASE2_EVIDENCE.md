@@ -35,7 +35,7 @@ Search terms such as `water`, `groundwater`, `reservoir`, `dry well`, or `bobcat
 ## Verification
 
 - `npm test`: 55 passing tests across 10 files.
-- `npm run test:browser`: 5 passing Chromium tests across the sample, three CNRA fixture flows, and postal/FIPS display.
+- `npm run test:browser`: 6 passing Chromium tests across the sample, three CNRA fixture flows, postal/FIPS display, and workspace reload/export.
 - `npm run build`: passed; existing Vite warning remains for DuckDB-Wasm chunks over 500 kB.
 - `get_errors` on touched Phase 2 source and test files: no errors.
 - GitHub Actions runs the browser smoke suite after `npm run build` and before Pages deployment.
