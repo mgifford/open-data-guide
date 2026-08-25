@@ -714,7 +714,9 @@ function renderRelated(results = null, semantic = false) {
   const list = document.createElement("ol");
   matches.slice(0, 5).forEach((match) => {
     const item = document.createElement("li");
-    const reason = semantic ? "Optional semantic comparison" : match.reasons.join("; ");
+    const reason = semantic
+      ? `Semantic similarity ${(match.score * 100).toFixed(1)}%; deterministic evidence: ${match.reasons.join("; ") || "none"}. Similarity does not establish comparison or join compatibility.`
+      : match.reasons.join("; ");
     item.textContent = `${match.dataset.title} (${reason})`;
     const dismiss = document.createElement("button");
     dismiss.type = "button";
@@ -843,12 +845,18 @@ function renderCapabilityReport(report, decision) {
   } else {
     interpretation.textContent = "No ready page-accessible Prompt API was found. The browser may still contain internal AI features that websites cannot call. No browser embedding API is exposed.";
   }
-  const fallback = document.createElement("button");
-  fallback.type = "button";
-  fallback.className = "button-secondary";
-  fallback.textContent = "Use app-provided MiniLM matching";
-  fallback.addEventListener("click", runAppProvidedSemanticMatching);
-  container.append(heading, list, compute, interpretation, fallback);
+  const fallbackDetails = document.createElement("details");
+  const fallbackSummary = document.createElement("summary");
+  fallbackSummary.textContent = "Use app-provided MiniLM matching";
+  const disclosure = document.createElement("p");
+  disclosure.textContent = "Model: Xenova/all-MiniLM-L6-v2. Source: Hugging Face Transformers.js CDN. License: Apache-2.0 for the model and runtime; review the model card and library notices before use. Transfer: approximately 90 MB, browser-managed. Purpose: compare catalog titles, descriptions, and field descriptions locally; raw dataset rows are not sent. Storage: cached vectors are keyed by source digest and model version in this browser. Removal: use the browser site-data controls to remove the model cache; the Clear local application data action removes cached vectors and saved metadata only.";
+  const consent = document.createElement("button");
+  consent.type = "button";
+  consent.className = "button-secondary";
+  consent.textContent = "Approve local semantic matching";
+  consent.addEventListener("click", runAppProvidedSemanticMatching);
+  fallbackDetails.append(fallbackSummary, disclosure, consent);
+  container.append(heading, list, compute, interpretation, fallbackDetails);
   if (decision.queryPlanner === "browser-ready" && currentDataset && currentFields.length) {
     const browserPlanner = document.createElement("button");
     browserPlanner.type = "button";

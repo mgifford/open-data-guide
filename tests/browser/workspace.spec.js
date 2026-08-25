@@ -47,6 +47,23 @@ test("keeps the page within a narrow viewport", async ({ page }) => {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 });
 
+test("discloses MiniLM before requiring consent", async ({ page }) => {
+  await page.goto("/");
+  const modelRequests = [];
+  page.on("request", (request) => {
+    if (/huggingface|transformers/i.test(request.url())) modelRequests.push(request.url());
+  });
+  await page.getByRole("button", { name: "Check browser AI support" }).click();
+  const details = page.getByText("Use app-provided MiniLM matching", { exact: true });
+  await expect(details).toBeVisible();
+  await details.click();
+  await expect(page.getByText(/Xenova\/all-MiniLM-L6-v2/)).toBeVisible();
+  await expect(page.getByText(/raw dataset rows are not sent/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Approve local semantic matching" })).toBeVisible();
+  await expect(page.locator("#status")).toContainText("No model was downloaded");
+  expect(modelRequests).toHaveLength(0);
+});
+
 test("migrates a legacy version-one dataset marker", async ({ page }) => {
   await page.goto("/migration-seed.html");
   await page.evaluate(() => new Promise((resolve, reject) => {
