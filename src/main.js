@@ -32,6 +32,8 @@ let dismissedRelated = new Set();
 let pendingHistoryRecord = null;
 let pendingHistoryPlan = null;
 let catalogSeenKeys = new Set();
+let activePlannerProvenance = { modelBackend: "deterministic", modelIdentifier: "", modelVersion: "" };
+let plannerAbortController = null;
 
 function controlsPlan() {
   return {
@@ -547,6 +549,8 @@ elements["plan-form"].addEventListener("submit", async (event) => {
       ["Source URL", currentResource.url],
       ["Fields used", [plan.dimension, plan.measure].filter(Boolean).join(", ") || "No named fields"],
       ["Rows returned", String(rows.length)],
+      ["Planning backend", activePlannerProvenance.modelBackend],
+      ["Model identity", activePlannerProvenance.modelIdentifier || "Not disclosed by browser"],
       ["Calculated", new Date().toISOString()],
     ]);
     await putRecord("queries", {
@@ -574,9 +578,9 @@ elements["plan-form"].addEventListener("submit", async (event) => {
       visualizationIntent: plan.dimension ? "grouped" : "table",
       vegaLiteSpec: null,
       narrative: elements["result-explanation"].textContent,
-      modelBackend: "deterministic",
-      modelIdentifier: "",
-      modelVersion: "",
+      modelBackend: activePlannerProvenance.modelBackend,
+      modelIdentifier: activePlannerProvenance.modelIdentifier,
+      modelVersion: activePlannerProvenance.modelVersion,
       createdAt: new Date().toISOString(),
       lastRunAt: new Date().toISOString(),
     });
@@ -783,6 +787,17 @@ function renderCapabilityReport(report, decision) {
     browserPlanner.addEventListener("click", runBrowserPlanner);
     container.append(browserPlanner);
   }
+  if (currentDataset && currentFields.length) {
+    const localPlanner = document.createElement("button");
+    localPlanner.type = "button";
+    localPlanner.className = "button-secondary";
+    localPlanner.textContent = "Use a local Hugging Face planner";
+    localPlanner.addEventListener("click", runHuggingFacePlanner);
+    container.append(localPlanner);
+    const localNote = document.createElement("p");
+    localNote.textContent = "Optional local model: about 500 MB, downloaded only after approval and kept in the browser-managed cache.";
+    container.append(localNote);
+  }
 }
 
 async function runBrowserPlanner() {
@@ -790,11 +805,19 @@ async function runBrowserPlanner() {
     setStatus("Load a dataset resource before asking browser-provided AI to suggest a plan.", "error");
     return;
   }
+  plannerAbortController = new AbortController();
+  const cancel = document.createElement("button");
+  cancel.type = "button";
+  cancel.className = "button-secondary";
+  cancel.textContent = "Cancel browser planning";
+  cancel.addEventListener("click", () => plannerAbortController?.abort());
+  elements["capability-output"].append(cancel);
   setStatus("Creating a browser-provided planning session after your request...");
   try {
     const { createChromePromptProvider } = await import("./ai/providers.js");
-    const provider = createChromePromptProvider(window);
+    const provider = createChromePromptProvider(window, { signal: plannerAbortController.signal });
     const plan = await provider.plan({ question: elements.question.value, dataset: currentDataset, fields: currentFields });
+    activePlannerProvenance = { modelBackend: provider.id, modelIdentifier: "browser-provided", modelVersion: "browser-managed" };
     elements.aggregation.value = plan.aggregation || "count";
     elements.measure.value = plan.measure || "";
     elements.dimension.value = plan.dimension || "";
@@ -803,6 +826,46 @@ async function runBrowserPlanner() {
     else setStatus("Browser-provided AI suggested a constrained plan. Review it before running the deterministic query.");
   } catch (error) {
     setStatus(`Browser-provided planning failed: ${error.message}. The deterministic planner remains available.`, "error");
+  } finally {
+    cancel.remove();
+    plannerAbortController = null;
+  }
+}
+
+async function runHuggingFacePlanner() {
+  if (!currentDataset || !currentFields.length) return;
+  if (!window.confirm("Download and run the optional local Hugging Face model? The browser will manage about 500 MB of model files.")) return;
+  plannerAbortController = new AbortController();
+  const cancel = document.createElement("button");
+  cancel.type = "button";
+  cancel.className = "button-secondary";
+  cancel.textContent = "Cancel local model";
+  cancel.addEventListener("click", () => plannerAbortController?.abort());
+  elements["capability-output"].append(cancel);
+  setStatus("Preparing the optional local model...");
+  try {
+    const { createHuggingFaceProvider } = await import("./ai/providers.js");
+    const provider = createHuggingFaceProvider({
+      approved: true,
+      signal: plannerAbortController.signal,
+      onProgress: (progress) => {
+        if (progress.status === "progress" && progress.progress) setStatus(`Downloading the optional local model: ${Math.round(progress.progress)}%`);
+      },
+    });
+    const plan = await provider.plan({ question: elements.question.value, dataset: currentDataset, fields: currentFields });
+    activePlannerProvenance = { modelBackend: provider.id, modelIdentifier: provider.modelIdentifier, modelVersion: provider.modelVersion };
+    elements.aggregation.value = plan.aggregation || "count";
+    elements.measure.value = plan.measure || "";
+    elements.dimension.value = plan.dimension || "";
+    elements["plan-form"].hidden = plan.status === "needs-clarification";
+    if (plan.status === "needs-clarification") showDateClarification(plan);
+    else setStatus("The local model suggested a constrained plan. Review it before running the deterministic query.");
+    await provider.close();
+  } catch (error) {
+    setStatus(`Local model planning failed: ${error.message}. The deterministic planner remains available.`, "error");
+  } finally {
+    cancel.remove();
+    plannerAbortController = null;
   }
 }
 

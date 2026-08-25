@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createChromePromptProvider, deterministicProvider, providerDecision } from "../src/ai/providers.js";
+import { createChromePromptProvider, createHuggingFaceProvider, deterministicProvider, providerDecision } from "../src/ai/providers.js";
 
 describe("analysis plan providers", () => {
   const fields = [{ name: "state", type: "VARCHAR" }, { name: "amount_usd", type: "DOUBLE" }];
@@ -39,5 +39,11 @@ describe("analysis plan providers", () => {
     expect(providerDecision({ apis: [{ id: "prompt", ready: true, downloadable: false }] })).toBe("browser-prompt-ready");
     expect(providerDecision({ apis: [{ id: "prompt", ready: false, downloadable: true }] })).toBe("browser-prompt-downloadable");
     expect(providerDecision({ apis: [{ id: "prompt", ready: false, downloadable: false }] })).toBe("deterministic-only");
+  });
+
+  it("requires explicit approval for the local Hugging Face model", async () => {
+    const provider = createHuggingFaceProvider();
+    expect((await provider.availability()).status).toBe("downloadable");
+    await expect(provider.plan({ question: "count by state", dataset: {}, fields })).rejects.toThrow(/approval/);
   });
 });

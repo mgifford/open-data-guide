@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { compilePlan, interpretQuestion, quoteIdentifier, quoteLiteral } from "../src/query/plan.js";
+import evaluationCases from "./query-planning-evaluation.json";
 
 const fields = [
   { name: "state", type: "VARCHAR" },
@@ -76,5 +77,10 @@ describe("constrained query plans", () => {
     ]);
     expect(result.timeField).toBe("Observation Date");
     expect(result.assumptions[0]).toMatch(/review/);
+  });
+
+  it("contains the required bounded planning evaluation set", () => {
+    expect(evaluationCases).toHaveLength(40);
+    expect(new Set(evaluationCases.map((item) => item.kind))).toEqual(new Set(["ready", "clarification", "rejection"]));
   });
 });

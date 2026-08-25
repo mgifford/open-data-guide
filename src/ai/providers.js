@@ -1,6 +1,12 @@
 import { capabilityDecision, normalizeAvailability, resolvePath } from "./browser-capabilities.js";
 import { interpretQuestion, validatePlan } from "../query/plan.js";
 
+export const LOCAL_MODEL = {
+  id: "onnx-community/Qwen2.5-0.5B-Instruct",
+  revision: "main",
+  approximateDownload: "about 500 MB, browser-managed cache",
+};
+
 export const ANALYSIS_PLAN_SCHEMA = {
   type: "object",
   additionalProperties: false,
@@ -63,9 +69,20 @@ export function createChromePromptProvider(root = globalThis, options = {}) {
       const availability = await this.availability();
       if (!availability.ready) throw new Error("Browser-provided AI is not ready. Approve its browser-managed download before planning.");
       if (!session) {
-        session = await languageModel.create({ signal: options.signal, responseConstraint: ANALYSIS_PLAN_SCHEMA });
+        try {
+          session = await languageModel.create({ signal: options.signal, responseConstraint: ANALYSIS_PLAN_SCHEMA });
+        } catch (error) {
+          if (!/constraint|schema|option|unsupported/i.test(error.message || "")) throw error;
+          session = await languageModel.create({ signal: options.signal });
+        }
       }
-      const response = await session.prompt(promptFor(input), { responseConstraint: ANALYSIS_PLAN_SCHEMA, signal: options.signal });
+      let response;
+      try {
+        response = await session.prompt(promptFor(input), { responseConstraint: ANALYSIS_PLAN_SCHEMA, signal: options.signal });
+      } catch (error) {
+        if (!/constraint|schema|option|unsupported/i.test(error.message || "")) throw error;
+        response = await session.prompt(promptFor(input), { signal: options.signal });
+      }
       const plan = typeof response === "string" ? JSON.parse(response) : response;
       validatePlan(plan, input.fields);
       return plan;
@@ -80,4 +97,38 @@ export function createChromePromptProvider(root = globalThis, options = {}) {
 export function providerDecision(report) {
   const decision = capabilityDecision(report);
   return decision.queryPlanner === "browser-ready" ? "browser-prompt-ready" : decision.queryPlanner === "browser-downloadable" ? "browser-prompt-downloadable" : "deterministic-only";
+}
+
+export function createHuggingFaceProvider(options = {}) {
+  let generator = null;
+  return {
+    id: "huggingface-local",
+    label: "Local Hugging Face model",
+    modelIdentifier: LOCAL_MODEL.id,
+    modelVersion: LOCAL_MODEL.revision,
+    downloadDisclosure: LOCAL_MODEL.approximateDownload,
+    async availability() {
+      return { status: generator ? "available" : "downloadable", ready: Boolean(generator), downloadable: !generator };
+    },
+    async plan(input) {
+      if (options.approved !== true) throw new Error("Local model use requires explicit approval.");
+      if (!generator) {
+        const { pipeline } = await import(/* @vite-ignore */ "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1");
+        generator = await pipeline("text-generation", LOCAL_MODEL.id, {
+          revision: LOCAL_MODEL.revision,
+          dtype: "q4",
+          progress_callback: options.onProgress,
+        });
+      }
+      const output = await generator(promptFor(input), { max_new_tokens: 500, temperature: 0, do_sample: false, signal: options.signal });
+      const text = Array.isArray(output) ? output[0]?.generated_text || "" : String(output || "");
+      const json = text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1);
+      const plan = JSON.parse(json);
+      validatePlan(plan, input.fields);
+      return { ...plan, modelBackend: "huggingface-local", modelIdentifier: LOCAL_MODEL.id, modelVersion: LOCAL_MODEL.revision };
+    },
+    async close() {
+      generator = null;
+    },
+  };
 }
