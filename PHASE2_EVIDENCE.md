@@ -30,10 +30,11 @@ Search terms such as `water`, `groundwater`, `reservoir`, `dry well`, or `bobcat
 - No postal or Census dataset is automatically joined.
 - No claim of join compatibility from matching names, formats, ZIP codes, or textual similarity.
 - No external catalog crawling beyond the catalog URL explicitly supplied or associated with the current dataset.
+- Geographic reference-data work is deliberately deferred to the bounded registry contract in [REFERENCE_DATA.md](REFERENCE_DATA.md); Phase 2 performs no enrichment, postal lookup, Census lookup, or automatic join.
 
 ## Verification
 
-- `npm test`: 46 passing tests across 7 files.
+- `npm test`: 55 passing tests across 10 files.
 - `npm run test:browser`: 5 passing Chromium tests across the sample, three CNRA fixture flows, and postal/FIPS display.
 - `npm run build`: passed; existing Vite warning remains for DuckDB-Wasm chunks over 500 kB.
 - `get_errors` on touched Phase 2 source and test files: no errors.

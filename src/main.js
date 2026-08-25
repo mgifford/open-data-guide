@@ -2,9 +2,10 @@ import "./style.css";
 import { resolveDataset, loadDataDictionary, searchCkanCatalogPage, searchDkanCatalogPage } from "./adapters/resolver.js";
 import {
   saveDataset, listDatasets, removeDataset, listRecords, putRecord, deleteRecord,
-  exportWorkspace, importWorkspace, clearWorkspace,
+  exportWorkspace, importWorkspace, clearWorkspace, storageEstimate,
 } from "./catalog/storage.js";
 import { catalogSearchTerms, explainRelatedDataset, relatedDatasets } from "./catalog/related.js";
+import { sourceChanged } from "./catalog/history.js";
 import { loadResource, runQuery } from "./data/duckdb.js";
 import { compilePlan, interpretQuestion } from "./query/plan.js";
 import { renderTable } from "./render/table.js";
@@ -57,7 +58,9 @@ async function refreshStorageSummary() {
   const [datasets, queries, relationships] = await Promise.all([
     listRecords("datasets"), listRecords("queries"), listRecords("relationships"),
   ]);
-  elements["storage-summary"].textContent = `Local cache: ${datasets.length} saved dataset${datasets.length === 1 ? "" : "s"}, ${queries.length} saved quer${queries.length === 1 ? "y" : "ies"}, and ${relationships.length} relationship record${relationships.length === 1 ? "" : "s"}. Source files are not copied here.`;
+  const estimate = await storageEstimate();
+  const usage = estimate.usage === null ? "storage estimate unavailable" : `${(estimate.usage / 1024 / 1024).toFixed(1)} MB used`;
+  elements["storage-summary"].textContent = `Local cache: ${datasets.length} saved dataset${datasets.length === 1 ? "" : "s"}, ${queries.length} saved quer${queries.length === 1 ? "y" : "ies"}, and ${relationships.length} relationship record${relationships.length === 1 ? "" : "s"}. ${usage}. Source files are not copied here.`;
 }
 
 function plainText(value) {
@@ -156,17 +159,19 @@ async function refreshHistory(filter = "") {
     const heading = document.createElement("h3");
     heading.textContent = record.question;
     const detail = document.createElement("p");
-    detail.textContent = `${formatDate(record.lastRunAt)} · ${record.interpretation?.aggregation || "query"} · ${record.rowCountReturned ?? 0} rows returned`;
+    const stale = currentDataset ? sourceChanged(currentDataset, record) : false;
+    detail.textContent = `${formatDate(record.lastRunAt)} · ${record.interpretation?.aggregation || "query"} · ${record.rowCountReturned ?? 0} rows returned${stale ? " · stale source: review before reuse" : ""}`;
     const actions = document.createElement("div");
     actions.className = "saved-actions";
     const rerun = document.createElement("button");
     rerun.type = "button";
     rerun.className = "button-secondary";
-    rerun.textContent = "Reuse question";
+    rerun.textContent = stale ? "Review stale question" : "Reuse question";
     rerun.addEventListener("click", () => {
       elements.question.value = record.question;
       document.getElementById("question-section").hidden = false;
       elements.question.focus();
+      if (stale) setStatus("This source changed since the analysis. Review fields and plan before running it.");
     });
     const remove = document.createElement("button");
     remove.type = "button";
@@ -365,6 +370,7 @@ elements["load-resource-button"].addEventListener("click", async () => {
     ]));
     profile.fields = profile.fields.map((field) => ({ ...field, description: definitions.get(field.name.toLowerCase()) || "" }));
     currentDataset = { ...currentDataset, fields: profile.fields, selectedResource: currentResource };
+    if (profile.sourceDigest) currentDataset.sourceDigest = profile.sourceDigest;
     renderProfile(profile);
     setStatus("Resource loaded. The preview, fields, and question builder are ready.");
   } catch (error) {
@@ -427,6 +433,7 @@ elements["plan-form"].addEventListener("submit", async (event) => {
       datasetKeys: [currentDataset.key],
       resourceUrls: [currentResource.url],
       sourceDigests: [currentDataset.sourceDigest || ""],
+      sourceModified: currentDataset.modified || "",
       interpretation: plan,
       queryPlan: plan,
       sql,

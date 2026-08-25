@@ -1,5 +1,5 @@
 const DB_NAME = "open-data-guide";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const STORES = ["datasets", "resources", "fields", "relationships", "queries", "embeddings", "preferences"];
 
 function openDatabase() {
@@ -33,6 +33,22 @@ function openDatabase() {
           cursor.continue();
         };
       }
+      if (request.oldVersion < 3) {
+        const datasets = transaction.objectStore("datasets");
+        datasets.openCursor().onsuccess = (event) => {
+          const cursor = event.target.result;
+          if (!cursor) return;
+          cursor.update({ ...cursor.value, schemaVersion: DB_VERSION });
+          cursor.continue();
+        };
+        const queries = transaction.objectStore("queries");
+        queries.openCursor().onsuccess = (event) => {
+          const cursor = event.target.result;
+          if (!cursor) return;
+          cursor.update({ ...cursor.value, version: cursor.value.version || 1, stale: Boolean(cursor.value.stale) });
+          cursor.continue();
+        };
+      }
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
@@ -53,7 +69,7 @@ async function transact(storeNames, mode, action) {
 }
 
 export function saveDataset(dataset) {
-  const saved = { ...dataset, savedAt: new Date().toISOString() };
+  const saved = { ...dataset, schemaVersion: DB_VERSION, savedAt: new Date().toISOString() };
   return transact(["datasets"], "readwrite", ({ datasets }) => datasets.put(saved));
 }
 
@@ -120,4 +136,10 @@ export async function clearWorkspace() {
 
 export function workspaceStoreNames() {
   return [...STORES];
+}
+
+export async function storageEstimate() {
+  if (!globalThis.navigator?.storage?.estimate) return { usage: null, quota: null };
+  const estimate = await globalThis.navigator.storage.estimate();
+  return { usage: estimate.usage ?? null, quota: estimate.quota ?? null };
 }

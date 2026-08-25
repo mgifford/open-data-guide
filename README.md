@@ -35,6 +35,7 @@ npm run preview
 - Postal, ZIP+4, ZCTA, FIPS, latitude, and longitude role detection with leading-zero preservation and country-aware validation.
 - Current-catalog search with bounded pagination and explainable subject, geography, temporal, publisher, and field evidence.
 - Playwright Chromium acceptance coverage for the sample, CNRA fixtures, and postal/FIPS preservation.
+- Versioned local query history with source-digest staleness checks and a bounded geographic reference-data registry contract.
 - Field and row previews.
 - A deliberately small natural-language interpreter for count, sum, average, minimum, and maximum questions.
 - Field validation before SQL generation.

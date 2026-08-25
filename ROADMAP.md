@@ -13,3 +13,7 @@
 - Add source digests, stale-result detection, downloadable result CSV and Vega-Lite JSON.
 - Add local catalog fixtures, 40+ query-planning cases, Playwright keyboard/reflow/forced-colors checks, and manual browser AI verification.
 - Improve code splitting for DuckDB assets and add explicit timeout/cancellation recovery.
+
+## Phase 3.5: Geographic reference-data connectors
+
+Implement the registered-source approval workflow only after the local research workspace is stable. Add versioned authority/licensing records, compatibility checks, user-approved unique-value lookup, source vintage/digest tracking, ACS estimate and margin-of-error pairing, ZIP-to-ZCTA approximation disclosure, minimum group-size and sensitive-data safeguards, deterministic DuckDB-Wasm joins, and browser-compatible fallbacks. No default third-party lookup or automatic enrichment is permitted.

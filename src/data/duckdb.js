@@ -5,6 +5,7 @@ import mvpWorker from "@duckdb/duckdb-wasm/dist/duckdb-browser-mvp.worker.js?url
 import ehWorker from "@duckdb/duckdb-wasm/dist/duckdb-browser-eh.worker.js?url";
 import { detectSemanticRole } from "./geography.js";
 import { decodeUtf8, profileRows } from "./ingestion.js";
+import { digestText } from "../catalog/history.js";
 
 const BUNDLES = {
   mvp: { mainModule: mvpModule, mainWorker: mvpWorker },
@@ -76,6 +77,7 @@ export async function loadResource(resource) {
     if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
     const text = decodeUtf8(new Uint8Array(await response.arrayBuffer()));
     sourceProfile = profileRows(text);
+    sourceProfile.sourceDigest = await digestText(text);
     await db.registerFileText(`${filename}.raw`, text);
     await connection.query(`CREATE OR REPLACE VIEW dataset_raw AS SELECT * FROM ${rawCsvReader(`${filename}.raw`)}`);
     const projection = sourceProfile.fields.map(normalizedSourceExpression).join(", ");
@@ -102,7 +104,7 @@ export async function loadResource(resource) {
     field.distinctCount = Number(quality[`${field.name}__distinct_count`] || 0);
     field.warnings = field.nullCount ? [`${field.nullCount} value(s) were recognized as missing, including configured textual null sentinels.`] : [];
   });
-  return { fields, preview, filename, quality: { rowCount: Number(quality.row_count || 0), rawValuesRetained: resource.format === "csv", parseFailures: sourceProfile?.parseFailures || [] } };
+  return { fields, preview, filename, sourceDigest: sourceProfile?.sourceDigest || "", quality: { rowCount: Number(quality.row_count || 0), rawValuesRetained: resource.format === "csv", parseFailures: sourceProfile?.parseFailures || [] } };
 }
 
 export async function runQuery(sql) {

@@ -20,7 +20,7 @@
     "vega-lite": "6.4.3"
   },
   "devDependencies": {
-    "@playwright/test": "^1.55.0",
+    "@playwright/test": "^1.55.1",
     "vite": "8.2.2",
     "vitest": "4.1.11"
   }
