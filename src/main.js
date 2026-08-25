@@ -7,7 +7,7 @@ import {
 import { catalogSearchTerms, explainRelatedDataset, relatedDatasets } from "./catalog/related.js";
 import { compareFields, historyStatus, sourceChanged } from "./catalog/history.js";
 import { loadResource, runQuery } from "./data/duckdb.js";
-import { compilePlan, interpretQuestion } from "./query/plan.js";
+import { compilePlan, interpretQuestion, validatePlan } from "./query/plan.js";
 import { renderTable } from "./render/table.js";
 import { renderChart } from "./render/chart.js";
 import { shouldRefuseResource } from "./data/ingestion.js";
@@ -16,7 +16,7 @@ const elements = Object.fromEntries([
   "dataset-form", "dataset-url", "sample-button", "status", "dataset-section", "dataset-heading",
   "dataset-description", "dataset-metadata", "platform-label", "resource-control", "size-warning",
   "load-resource-button", "save-button", "explore-section", "profile-summary", "fields-table",
-  "preview-table", "quality-summary", "question-section", "question-form", "question", "plan-form", "aggregation",
+  "preview-table", "quality-summary", "question-section", "question-form", "question", "question-interpret-button", "plan-form", "aggregation",
   "measure", "dimension", "run-plan-button", "query-output", "result-explanation", "result-table", "chart", "sql-output",
   "provenance", "saved-list", "related-list", "semantic-button", "capability-output",
   "catalog-form", "catalog-url", "catalog-query", "catalog-results", "history-search-form", "history-query", "history-list", "export-button",
@@ -32,6 +32,34 @@ let dismissedRelated = new Set();
 let pendingHistoryRecord = null;
 let pendingHistoryPlan = null;
 let catalogSeenKeys = new Set();
+
+function controlsPlan() {
+  return {
+    version: 1,
+    status: "ready",
+    question: elements.question.value,
+    aggregation: elements.aggregation.value,
+    measure: elements.measure.value,
+    dimension: elements.dimension.value,
+    timeField: currentFields.find((field) => field.name === elements.dimension.value && /DATE|TIME|TIMESTAMP/i.test(field.type || ""))?.name || "",
+    filters: [],
+    limit: 100,
+    assumptions: [],
+    visualization: { kind: elements.dimension.value ? "bar" : "table", x: elements.dimension.value || null, y: "value", series: null },
+  };
+}
+
+function validateCurrentControls() {
+  if (elements["plan-form"].hidden || !currentFields.length) return false;
+  try {
+    validatePlan(controlsPlan(), currentFields);
+    elements["run-plan-button"].disabled = false;
+    return true;
+  } catch (error) {
+    elements["run-plan-button"].disabled = true;
+    return false;
+  }
+}
 
 function setStatus(message, kind = "info") {
   elements.status.textContent = message;
@@ -227,6 +255,8 @@ async function refreshHistory(filter = "") {
 async function restoreHistoryRecord(record) {
   if (!record.sourceUrl) {
     elements.question.value = record.question || "";
+    elements["question-section"].hidden = false;
+    elements["question-interpret-button"].disabled = true;
     elements["plan-form"].hidden = true;
     setStatus("This older saved analysis has no original source URL. The question can be reused, but the original source cannot be reopened.", "error");
     return;
@@ -390,6 +420,7 @@ function renderProfile(profile) {
   elements["explore-section"].hidden = false;
   elements["question-section"].hidden = false;
   elements["question"].value = currentFields.some((field) => field.name === "state") ? "count by state" : "count rows";
+  elements["question-interpret-button"].disabled = false;
   elements["run-plan-button"].disabled = false;
   if (pendingHistoryPlan && pendingHistoryRecord) {
     const plan = pendingHistoryPlan;
@@ -410,9 +441,11 @@ function renderProfile(profile) {
       setStatus(`This saved plan needs repair before it can run. ${details || "The source changed."}`);
     } else {
       setStatus("Saved plan restored. Review the calculation and fields before running it.");
+      validateCurrentControls();
     }
     pendingHistoryPlan = null;
   }
+  [elements.aggregation, elements.measure, elements.dimension].forEach((control) => control.addEventListener("change", validateCurrentControls));
 }
 
 async function inspectUrl(url) {
@@ -490,23 +523,12 @@ elements["question-form"].addEventListener("submit", (event) => {
   } else {
     setStatus("Review the interpreted calculation and fields, then run the verified query.");
   }
+  validateCurrentControls();
 });
 
 elements["plan-form"].addEventListener("submit", async (event) => {
   event.preventDefault();
-  const plan = {
-    version: 1,
-    status: "ready",
-    question: elements.question.value,
-    aggregation: elements.aggregation.value,
-    measure: elements.measure.value,
-    dimension: elements.dimension.value,
-    timeField: currentFields.find((field) => field.name === elements.dimension.value && /DATE|TIME|TIMESTAMP/i.test(field.type || ""))?.name || "",
-    filters: [],
-    limit: 100,
-    assumptions: [],
-    visualization: { kind: elements.dimension.value ? "bar" : "table", x: elements.dimension.value || null, y: "value", series: null },
-  };
+  const plan = controlsPlan();
   try {
     const sql = compilePlan(plan, currentFields);
     setStatus("Running the validated query in DuckDB-Wasm...");

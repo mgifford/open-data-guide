@@ -15,7 +15,8 @@
 }
 
 * { box-sizing: border-box; }
-body { margin: 0; color: var(--text); background: var(--background); }
+html, body { overflow-x: clip; }
+body { margin: 0; max-width: 100%; color: var(--text); background: var(--background); }
 a { color: var(--accent-strong); }
 .skip-link { position: absolute; left: 1rem; top: -5rem; z-index: 10; padding: .7rem 1rem; background: var(--surface); }
 .skip-link:focus { top: 1rem; }
@@ -30,7 +31,7 @@ h2 { font-size: clamp(1.5rem, 4vw, 2rem); }
 .lede { font-size: 1.25rem; max-width: 42rem; }
 .privacy-note { border-left: .3rem solid var(--accent); padding-left: 1rem; color: var(--muted); }
 .layout { display: grid; gap: 1.2rem; }
-.panel { background: var(--surface); border: 1px solid var(--border); border-radius: .8rem; padding: clamp(1rem, 3vw, 2rem); box-shadow: 0 .2rem .8rem rgb(0 0 0 / .05); }
+.panel { min-width: 0; max-width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: .8rem; padding: clamp(1rem, 3vw, 2rem); box-shadow: 0 .2rem .8rem rgb(0 0 0 / .05); }
 .panel-accent { background: linear-gradient(145deg, var(--surface), var(--accent-soft)); }
 .section-heading { display: flex; gap: 1rem; justify-content: space-between; align-items: start; }
 label, legend { font-weight: 700; }
@@ -66,6 +67,7 @@ th { background: var(--background); }
 pre { white-space: pre-wrap; word-break: break-word; background: var(--background); padding: 1rem; border-radius: .4rem; }
 .chart { min-height: 8rem; max-width: 100%; margin-block: 1rem; }
 .chart-host { max-width: 100%; overflow-x: auto; }
+.chart-host svg { max-width: 100%; height: auto; }
 .story { border-left: .3rem solid var(--accent); padding: .8rem 1rem; background: var(--accent-soft); margin-block: 1rem; }
 .story h4 { margin: 0; }
 .story p { margin-bottom: 0; }
@@ -87,6 +89,7 @@ footer { color: var(--muted); padding-block: 2rem 4rem; }
   .workspace-nav { gap: .6rem; }
   .metadata { grid-template-columns: 1fr; }
   .metadata dd { margin-bottom: .5rem; }
+  pre { max-width: 100%; overflow-wrap: anywhere; }
 }
 
 @media (prefers-reduced-motion: reduce) {

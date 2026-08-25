@@ -17,7 +17,7 @@ function openDatabase() {
           database.createObjectStore(name, { keyPath });
         }
       });
-      if (request.oldVersion < 2) {
+      if (request.oldVersion < 3) {
         const datasets = transaction.objectStore("datasets");
         datasets.openCursor().onsuccess = (event) => {
           const cursor = event.target.result;
@@ -29,16 +29,8 @@ function openDatabase() {
             resources: Array.isArray(dataset.resources) ? dataset.resources : [],
             fields: Array.isArray(dataset.fields) ? dataset.fields : [],
             retrievedAt: dataset.retrievedAt || dataset.savedAt || new Date().toISOString(),
+            schemaVersion: DB_VERSION,
           });
-          cursor.continue();
-        };
-      }
-      if (request.oldVersion < 3) {
-        const datasets = transaction.objectStore("datasets");
-        datasets.openCursor().onsuccess = (event) => {
-          const cursor = event.target.result;
-          if (!cursor) return;
-          cursor.update({ ...cursor.value, schemaVersion: DB_VERSION });
           cursor.continue();
         };
         const queries = transaction.objectStore("queries");
@@ -50,7 +42,28 @@ function openDatabase() {
         };
       }
     };
-    request.onsuccess = () => resolve(request.result);
+    request.onsuccess = () => {
+      const database = request.result;
+      database.onversionchange = () => database.close();
+      const transaction = database.transaction(["datasets", "queries"], "readwrite");
+      const datasets = transaction.objectStore("datasets");
+      datasets.openCursor().onsuccess = (event) => {
+        const cursor = event.target.result;
+        if (!cursor) return;
+        const dataset = cursor.value;
+        cursor.update({ ...dataset, connectorId: dataset.connectorId || dataset.platform?.toLowerCase() || "unknown", resources: Array.isArray(dataset.resources) ? dataset.resources : [], fields: Array.isArray(dataset.fields) ? dataset.fields : [], retrievedAt: dataset.retrievedAt || dataset.savedAt || new Date().toISOString(), schemaVersion: DB_VERSION });
+        cursor.continue();
+      };
+      const queries = transaction.objectStore("queries");
+      queries.openCursor().onsuccess = (event) => {
+        const cursor = event.target.result;
+        if (!cursor) return;
+        cursor.update({ ...cursor.value, version: cursor.value.version || 1, stale: Boolean(cursor.value.stale) });
+        cursor.continue();
+      };
+      transaction.oncomplete = () => resolve(database);
+      transaction.onerror = () => reject(transaction.error);
+    };
     request.onerror = () => reject(request.error);
   });
 }
@@ -63,7 +76,6 @@ async function transact(storeNames, mode, action) {
     let result;
     Promise.resolve(action(stores)).then((value) => { result = value; }).catch(reject);
     transaction.onerror = () => reject(transaction.error);
-    transaction.oncomplete = () => db.close();
     transaction.oncomplete = () => { db.close(); resolve(result); };
   });
 }
