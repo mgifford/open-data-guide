@@ -5,7 +5,7 @@ import {
   exportWorkspace, importWorkspace, clearWorkspace, storageEstimate,
 } from "./catalog/storage.js";
 import { catalogSearchTerms, explainRelatedDataset, relatedDatasets } from "./catalog/related.js";
-import { historyStatus, sourceChanged } from "./catalog/history.js";
+import { compareFields, historyStatus, sourceChanged } from "./catalog/history.js";
 import { loadResource, runQuery } from "./data/duckdb.js";
 import { compilePlan, interpretQuestion } from "./query/plan.js";
 import { renderTable } from "./render/table.js";
@@ -17,7 +17,7 @@ const elements = Object.fromEntries([
   "dataset-description", "dataset-metadata", "platform-label", "resource-control", "size-warning",
   "load-resource-button", "save-button", "explore-section", "profile-summary", "fields-table",
   "preview-table", "quality-summary", "question-section", "question-form", "question", "plan-form", "aggregation",
-  "measure", "dimension", "query-output", "result-explanation", "result-table", "chart", "sql-output",
+  "measure", "dimension", "run-plan-button", "query-output", "result-explanation", "result-table", "chart", "sql-output",
   "provenance", "saved-list", "related-list", "semantic-button", "capability-output",
   "catalog-form", "catalog-url", "catalog-query", "catalog-results", "history-search-form", "history-query", "history-list", "export-button",
   "import-input", "clear-data-button", "storage-summary", "story-text", "export-receipt", "clarification-output",
@@ -30,6 +30,8 @@ let savedDatasets = [];
 let historyRecords = [];
 let dismissedRelated = new Set();
 let pendingHistoryRecord = null;
+let pendingHistoryPlan = null;
+let catalogSeenKeys = new Set();
 
 function setStatus(message, kind = "info") {
   elements.status.textContent = message;
@@ -110,7 +112,7 @@ function metadataList(container, entries) {
   });
 }
 
-function renderCatalogResults(datasets, total, start = 0, query = "") {
+function renderCatalogResults(datasets, total, start = 0, query = "", rawCount = datasets.length) {
   elements["catalog-results"].replaceChildren();
   if (!datasets.length) {
     elements["catalog-results"].textContent = "No datasets matched those terms in this data catalog.";
@@ -119,7 +121,8 @@ function renderCatalogResults(datasets, total, start = 0, query = "") {
   const heading = document.createElement("p");
   heading.textContent = `Showing ${start + 1}-${start + datasets.length} of ${total} catalog matches. Search terms: ${query}. Results are reranked only within this fetched page.`;
   const list = document.createElement("ol");
-  const unique = [...new Map(datasets.filter((dataset) => dataset.key !== currentDataset?.key).map((dataset) => [dataset.key, dataset])).values()];
+  const unique = [...new Map(datasets.filter((dataset) => dataset.key !== currentDataset?.key && !catalogSeenKeys.has(dataset.key)).map((dataset) => [dataset.key, dataset])).values()];
+  unique.forEach((dataset) => catalogSeenKeys.add(dataset.key));
   unique.forEach((dataset) => {
     const item = document.createElement("li");
     const link = document.createElement("a");
@@ -147,17 +150,18 @@ function renderCatalogResults(datasets, total, start = 0, query = "") {
     list.append(item);
   });
   elements["catalog-results"].append(heading, list);
-  if (start + unique.length < total) {
+  if (start + rawCount < total) {
     const next = document.createElement("button");
     next.type = "button";
     next.className = "button-secondary";
     next.textContent = "Load next catalog page";
-    next.addEventListener("click", () => searchCatalog(start + unique.length));
+    next.addEventListener("click", () => searchCatalog(start + rawCount));
     elements["catalog-results"].append(next);
   }
 }
 
 async function searchCatalog(start = 0) {
+  if (start === 0) catalogSeenKeys = new Set();
   const catalogUrl = elements["catalog-url"].value.trim() || currentDataset?.catalogUrl;
   const query = elements["catalog-query"].value.trim() || catalogSearchTerms(currentDataset || { title: "public data" });
   if (!catalogUrl || !query) {
@@ -168,7 +172,7 @@ async function searchCatalog(start = 0) {
     const search = currentDataset?.connectorId === "dkan" ? searchDkanCatalogPage : searchCkanCatalogPage;
     const result = await search(catalogUrl, query, { start, rows: 20 });
     const ranked = result.datasets.map((dataset) => ({ dataset, score: currentDataset ? explainRelatedDataset(currentDataset, dataset).score : 0 })).sort((a, b) => b.score - a.score).map(({ dataset }) => dataset);
-    renderCatalogResults(ranked, result.total, result.start, query);
+    renderCatalogResults(ranked, result.total, result.start, query, result.datasets.length);
     setStatus(`Found ${result.total} catalog matches.`);
   } catch (error) {
     setStatus(`Catalog search failed: ${error.message}. Check the URL, CORS, pagination, or rate limit.`, "error");
@@ -221,10 +225,17 @@ async function refreshHistory(filter = "") {
 }
 
 async function restoreHistoryRecord(record) {
+  if (!record.sourceUrl) {
+    elements.question.value = record.question || "";
+    elements["plan-form"].hidden = true;
+    setStatus("This older saved analysis has no original source URL. The question can be reused, but the original source cannot be reopened.", "error");
+    return;
+  }
   const dataset = await inspectUrl(record.sourceUrl);
   if (!dataset) return;
   const stale = sourceChanged(dataset, record);
   pendingHistoryRecord = record;
+  pendingHistoryPlan = record.queryPlan || record.interpretation || null;
   const resource = dataset.resources?.find((item) => item.id === record.resourceIds?.[0] || item.url === record.resourceUrls?.[0]);
   const select = document.getElementById("resource-select");
   if (select && resource) select.value = resource.id;
@@ -379,9 +390,36 @@ function renderProfile(profile) {
   elements["explore-section"].hidden = false;
   elements["question-section"].hidden = false;
   elements["question"].value = currentFields.some((field) => field.name === "state") ? "count by state" : "count rows";
+  elements["run-plan-button"].disabled = false;
+  if (pendingHistoryPlan && pendingHistoryRecord) {
+    const plan = pendingHistoryPlan;
+    elements["question"].value = pendingHistoryRecord.question || elements["question"].value;
+    elements.aggregation.value = plan.aggregation || "count";
+    elements.measure.value = plan.measure || "";
+    elements.dimension.value = plan.dimension || "";
+    elements["plan-form"].hidden = false;
+    const comparison = compareFields(pendingHistoryRecord.fieldSnapshot || [], currentFields);
+    const changed = comparison.removed.length || comparison.added.length || comparison.retyped.length || sourceChanged(currentDataset, pendingHistoryRecord);
+    if (changed) {
+      elements["run-plan-button"].disabled = true;
+      const details = [
+        comparison.removed.length ? `removed: ${comparison.removed.join(", ")}` : "",
+        comparison.added.length ? `added: ${comparison.added.join(", ")}` : "",
+        comparison.retyped.length ? `retyped: ${comparison.retyped.map((field) => `${field.name} (${field.previous} to ${field.current})`).join(", ")}` : "",
+      ].filter(Boolean).join("; ");
+      setStatus(`This saved plan needs repair before it can run. ${details || "The source changed."}`);
+    } else {
+      setStatus("Saved plan restored. Review the calculation and fields before running it.");
+    }
+    pendingHistoryPlan = null;
+  }
 }
 
 async function inspectUrl(url) {
+  if (!url || typeof url !== "string") {
+    setStatus("This saved analysis has no original source URL. The question can be reused, but the original source cannot be reopened.", "error");
+    return null;
+  }
   setStatus("Resolving the dataset and its catalog metadata...");
   try {
     const dataset = await resolveDataset(url);
@@ -457,10 +495,17 @@ elements["question-form"].addEventListener("submit", (event) => {
 elements["plan-form"].addEventListener("submit", async (event) => {
   event.preventDefault();
   const plan = {
+    version: 1,
+    status: "ready",
+    question: elements.question.value,
     aggregation: elements.aggregation.value,
     measure: elements.measure.value,
     dimension: elements.dimension.value,
     timeField: currentFields.find((field) => field.name === elements.dimension.value && /DATE|TIME|TIMESTAMP/i.test(field.type || ""))?.name || "",
+    filters: [],
+    limit: 100,
+    assumptions: [],
+    visualization: { kind: elements.dimension.value ? "bar" : "table", x: elements.dimension.value || null, y: "value", series: null },
   };
   try {
     const sql = compilePlan(plan, currentFields);

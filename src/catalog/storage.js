@@ -115,7 +115,14 @@ export function validateWorkspace(workspace) {
   }
   STORES.forEach((storeName) => {
     if (!Array.isArray(workspace.records[storeName])) throw new Error(`Workspace export is missing ${storeName}.`);
+    if (workspace.records[storeName].length > 10000) throw new Error(`${storeName} contains too many records.`);
+    workspace.records[storeName].forEach((record) => {
+      if (!record || typeof record !== "object" || Array.isArray(record)) throw new Error(`${storeName} contains an invalid record.`);
+      const key = storeName === "datasets" || storeName === "preferences" ? record.key : record.id;
+      if (typeof key !== "string" || !key || key.length > 500) throw new Error(`${storeName} contains a record with an invalid key.`);
+    });
   });
+  if (JSON.stringify(workspace).length > 25_000_000) throw new Error("Workspace export is larger than the 25 MB safety limit.");
   return true;
 }
 

@@ -18,4 +18,9 @@ describe("bounded geographic reference registry", () => {
     expect(checkReferenceCompatibility("local-http-mcp", "https://example.test/lookup").compatible).toBe(false);
     expect(checkReferenceCompatibility("local-http-mcp", "http://localhost:8787/lookup").compatible).toBe(true);
   });
+
+  it("requires provenance and paired uncertainty for ACS extracts", () => {
+    expect(() => planUniqueLookup({ sourceId: "census-acs-static", role: "zcta", values: ["00501"] })).toThrow(/vintage/);
+    expect(() => planUniqueLookup({ sourceId: "census-acs-static", role: "zcta", values: ["00501"], sourceVintage: "2023", sourceDigest: "abc", estimateField: "E" })).toThrow(/margin/);
+  });
 });

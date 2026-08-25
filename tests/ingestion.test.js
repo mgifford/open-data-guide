@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decodeUtf8, detectDelimiter, formatDisplayValue, parseDelimited, profileRows, shouldRefuseResource } from "../src/data/ingestion.js";
+import { decodeUtf8, detectDelimiter, formatDisplayValue, parseDelimited, profileRows, shouldRefuseResource, validateHeaders } from "../src/data/ingestion.js";
 import { detectSemanticRole, normalizeGeographicValue, validateGeographicValue } from "../src/data/geography.js";
 import reservoirCsv from "./fixtures/cnra-reservoir.csv?raw";
 
@@ -22,6 +22,17 @@ describe("deterministic ingestion and profiling", () => {
   it("does not infer ordinary text as numeric when Number returns null", () => {
     const profile = profileRows("state,payment_category,payment_date\nCA,Food,2025-01-01\nNY,Travel,2025-01-02\n");
     expect(profile.fields.map((field) => field.inferredType)).toEqual(["text", "text", "date"]);
+  });
+
+  it("treats whitespace and case variants of sentinels as missing", () => {
+    const profile = profileRows("amount,label\n , none\n12,NULL\n");
+    expect(profile.fields[0]).toMatchObject({ inferredType: "number", nullCount: 1, sentinelCount: 1 });
+    expect(profile.fields[1]).toMatchObject({ inferredType: "text", nullCount: 2, sentinelCount: 2 });
+  });
+
+  it("rejects empty and duplicate headers instead of dropping columns", () => {
+    expect(() => validateHeaders(["state", " "])).toThrow(/empty/);
+    expect(() => profileRows("State,state\nCA,CA\n")).toThrow(/duplicate/);
   });
 
   it("reports date ranges and formats epoch display values", () => {

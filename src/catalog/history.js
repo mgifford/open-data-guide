@@ -44,3 +44,13 @@ export function fieldMapping(oldFields, newFields) {
     };
   });
 }
+
+export function compareFields(oldFields = [], newFields = []) {
+  const current = new Map(newFields.map((field) => [field.name, field]));
+  const previous = new Map(oldFields.map((field) => [field.name, field]));
+  return {
+    removed: oldFields.filter((field) => !current.has(field.name)).map((field) => field.name),
+    added: newFields.filter((field) => !previous.has(field.name)).map((field) => field.name),
+    retyped: oldFields.filter((field) => current.has(field.name) && current.get(field.name).type !== field.type).map((field) => ({ name: field.name, previous: field.type, current: current.get(field.name).type })),
+  };
+}

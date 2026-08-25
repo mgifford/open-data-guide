@@ -53,15 +53,22 @@ export function parseDelimited(text, delimiter = detectDelimiter(text)) {
   return rows;
 }
 
+export function validateHeaders(headers) {
+  const normalized = headers.map((header) => String(header).trim().toLowerCase());
+  if (normalized.some((header) => !header)) throw new Error("The CSV header contains an empty column name.");
+  if (new Set(normalized).size !== normalized.length) throw new Error("The CSV header contains duplicate column names.");
+  return headers;
+}
+
 export function normalizeRows(text, delimiter = detectDelimiter(text)) {
   const parsed = parseDelimited(text, delimiter);
-  const headers = parsed.shift() || [];
+  const headers = validateHeaders(parsed.shift() || []);
   const parseFailures = parsed.flatMap((row, index) => row.length === headers.length ? [] : [{ rowNumber: index + 2, expectedFields: headers.length, actualFields: row.length }]);
   const rawRows = parsed.filter((row) => row.length === headers.length).map((row) => Object.fromEntries(headers.map((header, index) => [header, row[index]])));
   const sentinelCounts = Object.fromEntries(headers.map((header) => [header, 0]));
   const normalizedRows = rawRows.map((row) => Object.fromEntries(headers.map((header) => {
     const value = row[header];
-    if (NULL_SENTINELS.includes(value)) {
+    if (NULL_SENTINELS.some((sentinel) => sentinel.toLowerCase() === String(value).trim().toLowerCase())) {
       sentinelCounts[header] += 1;
       return [header, null];
     }
@@ -71,9 +78,9 @@ export function normalizeRows(text, delimiter = detectDelimiter(text)) {
 }
 
 function numberValue(value) {
-  if (value === null || value === "") return null;
+  if (value === null || String(value).trim() === "") return null;
   const number = Number(value);
-  return Number.isFinite(number) ? number : null;
+  return /^[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?$/.test(String(value).trim()) && Number.isFinite(number) ? number : null;
 }
 
 export function profileRows(text, delimiter) {

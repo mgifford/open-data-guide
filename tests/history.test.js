@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { boundedPreview, digestText, fieldMapping, historyStatus, sourceChanged } from "../src/catalog/history.js";
+import { boundedPreview, compareFields, digestText, fieldMapping, historyStatus, sourceChanged } from "../src/catalog/history.js";
 
 describe("local query history safeguards", () => {
   it("bounds stored previews", () => {
@@ -26,5 +26,11 @@ describe("local query history safeguards", () => {
   it("creates a stable digest for unchanged source text", async () => {
     expect(await digestText("a,b\n1,2\n")).toBe(await digestText("a,b\n1,2\n"));
     expect(await digestText("a,b\n1,3\n")).not.toBe(await digestText("a,b\n1,2\n"));
+  });
+
+  it("reports added, removed, and retyped fields", () => {
+    expect(compareFields([{ name: "state", type: "VARCHAR" }, { name: "amount", type: "DOUBLE" }], [{ name: "state", type: "DATE" }, { name: "county", type: "VARCHAR" }])).toEqual({
+      removed: ["amount"], added: ["county"], retyped: [{ name: "state", previous: "VARCHAR", current: "DATE" }],
+    });
   });
 });
