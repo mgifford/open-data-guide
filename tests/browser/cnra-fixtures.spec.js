@@ -14,5 +14,11 @@ for (const [label, filename, expectedField] of fixtures) {
     await page.getByRole("button", { name: "Load selected resource" }).click();
     await expect(page.getByRole("heading", { name: "Data quality before analysis" })).toBeVisible();
     await expect(page.getByRole("cell", { name: expectedField, exact: true })).toBeVisible();
+    if (label === "dry well") {
+      await page.getByRole("textbox", { name: "Question", exact: true }).fill("How have dry well reports changed over time?");
+      await page.getByRole("button", { name: "Interpret question" }).click();
+      await expect(page.locator("#clarification-output")).toContainText("Date field to use");
+      await expect(page.locator("#clarification-choice")).toContainText("Report Date");
+    }
   });
 }

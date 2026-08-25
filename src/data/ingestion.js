@@ -83,7 +83,7 @@ export function profileRows(text, delimiter) {
     const values = normalized.normalizedRows.map((row) => row[name]);
     const nonNull = values.filter((value) => value !== null && value !== "");
     const numbers = nonNull.map(numberValue);
-    const numeric = !CODE_ROLES.has(semanticRole) && numbers.length === nonNull.length && nonNull.length > 0;
+    const numeric = !CODE_ROLES.has(semanticRole) && nonNull.length > 0 && numbers.every(Number.isFinite);
     const dates = DATE_NAME.test(name) ? nonNull.map((value) => new Date(value)).filter((date) => !Number.isNaN(date.valueOf())) : [];
     const distinct = new Set(nonNull.map(String));
     return {

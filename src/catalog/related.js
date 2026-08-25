@@ -1,4 +1,4 @@
-const STOP_WORDS = new Set(["and", "the", "for", "from", "with", "data", "dataset", "of", "to", "a", "in", "california", "state", "public", "information", "report"]);
+const STOP_WORDS = new Set(["and", "the", "for", "from", "with", "data", "dataset", "of", "to", "a", "in", "california", "state", "public", "information", "report", "these", "this", "are", "have", "more", "which", "local", "federal"]);
 
 export function tokensFor(dataset) {
   const fields = (dataset.fields || []).map((field) => `${field.name || ""} ${field.description || ""}`).join(" ");

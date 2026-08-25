@@ -16,6 +16,8 @@ test("sample dataset reaches quality profile, table, chart, and SQL", async ({ p
   await page.getByRole("button", { name: "Run verified query" }).click();
 
   await expect(page.getByRole("table", { name: "Result for: count by state" })).toBeVisible();
+  await expect(page.getByRole("table", { name: "Result for: count by state" })).toContainText("CA");
+  await expect(page.getByRole("table", { name: "Result for: count by state" })).toContainText("NY");
   await expect(page.locator("#chart svg.marks")).toBeVisible();
   await page.getByText("Query and provenance").first().click();
   await expect(page.locator("#sql-output")).toContainText("GROUP BY");

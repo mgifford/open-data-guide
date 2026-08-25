@@ -10,8 +10,8 @@
 
 - Add complete filter and date-grouping controls to the review UI.
 - Store typed relationship records and expose reviewed comparison workflows.
-- Add source digests, stale-result detection, downloadable result CSV and Vega-Lite JSON.
-- Add local catalog fixtures, 40+ query-planning cases, Playwright keyboard/reflow/forced-colors checks, and manual browser AI verification.
+- Add downloadable result CSV and Vega-Lite JSON.
+- Add local catalog fixtures, 40+ query-planning cases, deeper Playwright keyboard/reflow/forced-colors checks, and manual browser AI verification.
 - Improve code splitting for DuckDB assets and add explicit timeout/cancellation recovery.
 
 ## Phase 3.5: Geographic reference-data connectors

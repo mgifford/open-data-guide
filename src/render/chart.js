@@ -33,7 +33,7 @@ export async function renderChart(container, rows, plan, fields = []) {
       x: { field: "category", type: fieldType, title: plan.dimension, sort: mark === "bar" ? "-y" : undefined },
       y: { field: "value", type: "quantitative", title: plan.aggregation },
     },
-    width: 600,
+    width: Math.max(280, Math.min(720, container.clientWidth || 600)),
     height: 320,
     config: { view: { stroke: null } },
   };

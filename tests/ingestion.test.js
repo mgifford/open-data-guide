@@ -19,6 +19,11 @@ describe("deterministic ingestion and profiling", () => {
     expect(profile.fields.find((field) => field.name === "Elevation Feet")).toMatchObject({ sentinelCount: 1, inferredType: "number", minimum: 700.5, maximum: 702.1 });
   });
 
+  it("does not infer ordinary text as numeric when Number returns null", () => {
+    const profile = profileRows("state,payment_category,payment_date\nCA,Food,2025-01-01\nNY,Travel,2025-01-02\n");
+    expect(profile.fields.map((field) => field.inferredType)).toEqual(["text", "text", "date"]);
+  });
+
   it("reports date ranges and formats epoch display values", () => {
     const profile = profileRows(reservoirCsv);
     expect(profile.fields.find((field) => field.name === "Observation Date").dateRange).toEqual(["2025-01-01T00:00:00.000Z", "2025-01-03T00:00:00.000Z"]);

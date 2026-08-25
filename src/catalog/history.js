@@ -11,13 +11,23 @@ export async function digestText(text) {
 
 export function sourceChanged(dataset, historical) {
   if (!dataset || !historical) return true;
+  if (!historical.datasetKeys?.includes(dataset.key)) return false;
   if (dataset.sourceDigest && historical.sourceDigests?.length && dataset.sourceDigest !== historical.sourceDigests[0]) return true;
   if (dataset.modified && historical.sourceModified && dataset.modified !== historical.sourceModified) return true;
-  if (dataset.resources?.length && historical.resourceUrls?.length) {
-    const currentUrls = dataset.resources.map((resource) => resource.url).filter(Boolean);
-    if (currentUrls.length && currentUrls[0] !== historical.resourceUrls[0]) return true;
+  const selectedResource = dataset.selectedResource || dataset.resources?.find((resource) => resource.id === historical.resourceIds?.[0]);
+  if (historical.resourceIds?.length && (!selectedResource || selectedResource.id !== historical.resourceIds[0])) return true;
+  if (historical.resourceUrls?.length && (!selectedResource || selectedResource.url !== historical.resourceUrls[0])) return true;
+  if (dataset.fields?.length && historical.fieldSnapshot?.length) {
+    const currentFields = new Set(dataset.fields.map((field) => field.name));
+    if (historical.fieldSnapshot.some((field) => !currentFields.has(field.name))) return true;
   }
   return false;
+}
+
+export function historyStatus(dataset, historical) {
+  if (!dataset || !historical) return "unknown";
+  if (!historical.datasetKeys?.includes(dataset.key)) return "different-dataset";
+  return sourceChanged(dataset, historical) ? "stale" : "current";
 }
 
 export function fieldMapping(oldFields, newFields) {
