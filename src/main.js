@@ -776,6 +776,34 @@ function renderCapabilityReport(report, decision) {
   fallback.textContent = "Use app-provided MiniLM matching";
   fallback.addEventListener("click", runAppProvidedSemanticMatching);
   container.append(heading, list, compute, interpretation, fallback);
+  if (decision.queryPlanner === "browser-ready" && currentDataset && currentFields.length) {
+    const browserPlanner = document.createElement("button");
+    browserPlanner.type = "button";
+    browserPlanner.textContent = "Ask browser-provided AI to suggest a plan";
+    browserPlanner.addEventListener("click", runBrowserPlanner);
+    container.append(browserPlanner);
+  }
+}
+
+async function runBrowserPlanner() {
+  if (!currentDataset || !currentFields.length) {
+    setStatus("Load a dataset resource before asking browser-provided AI to suggest a plan.", "error");
+    return;
+  }
+  setStatus("Creating a browser-provided planning session after your request...");
+  try {
+    const { createChromePromptProvider } = await import("./ai/providers.js");
+    const provider = createChromePromptProvider(window);
+    const plan = await provider.plan({ question: elements.question.value, dataset: currentDataset, fields: currentFields });
+    elements.aggregation.value = plan.aggregation || "count";
+    elements.measure.value = plan.measure || "";
+    elements.dimension.value = plan.dimension || "";
+    elements["plan-form"].hidden = plan.status === "needs-clarification";
+    if (plan.status === "needs-clarification") showDateClarification(plan);
+    else setStatus("Browser-provided AI suggested a constrained plan. Review it before running the deterministic query.");
+  } catch (error) {
+    setStatus(`Browser-provided planning failed: ${error.message}. The deterministic planner remains available.`, "error");
+  }
 }
 
 elements["semantic-button"].addEventListener("click", async () => {

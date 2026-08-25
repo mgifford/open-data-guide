@@ -37,6 +37,7 @@ npm run preview
 - Playwright Chromium acceptance coverage for the sample, CNRA fixtures, and postal/FIPS preservation.
 - Versioned local query history with source-digest staleness checks and a bounded geographic reference-data registry contract.
 - Workspace reload/export browser coverage and a patched Playwright test dependency with zero local npm audit findings.
+- Provider-independent browser AI planning with deterministic fallback and strict plan validation; browser model creation remains explicit and optional.
 - Field and row previews.
 - A deliberately small natural-language interpreter for count, sum, average, minimum, and maximum questions.
 - Field validation before SQL generation.

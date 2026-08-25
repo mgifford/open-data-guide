@@ -17,3 +17,7 @@
 ## Phase 3.5: Geographic reference-data connectors
 
 Implement the registered-source approval workflow only after the local research workspace is stable. Add versioned authority/licensing records, compatibility checks, user-approved unique-value lookup, source vintage/digest tracking, ACS estimate and margin-of-error pairing, ZIP-to-ZCTA approximation disclosure, minimum group-size and sensitive-data safeguards, deterministic DuckDB-Wasm joins, and browser-compatible fallbacks. No default third-party lookup or automatic enrichment is permitted.
+
+## Phase 4B: Capability-driven browser planning
+
+The provider boundary and deterministic fallback are implemented. Next: manual Chrome/Edge capability verification, explicit downloadable/downloading/cancelled UI states, broader response-constraint compatibility handling, and the 40-case plan evaluation set. No provider may calculate values or emit executable SQL/JavaScript.
