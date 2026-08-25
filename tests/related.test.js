@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { cosineSimilarity, relatedDatasets } from "../src/catalog/related.js";
 import { analyzeJoinCandidate } from "../src/catalog/relationships.js";
+import { chartRowsFor } from "../src/render/chart.js";
 
 describe("related dataset matching", () => {
   it("reports transparent shared terms", () => {
@@ -29,5 +30,11 @@ describe("related dataset matching", () => {
     expect(evidence.expectedCardinality).toBe("needs-review");
     expect(evidence.requiresUserConfirmation).toBe(true);
     expect(evidence.reasons).toContain("1 normalized key values overlap");
+  });
+
+  it("limits dense chart display while retaining the full result list", () => {
+    const rows = Array.from({ length: 80 }, (_, index) => ({ category: `Project ${index}`, value: index }));
+    expect(chartRowsFor(rows)).toHaveLength(15);
+    expect(rows).toHaveLength(80);
   });
 });

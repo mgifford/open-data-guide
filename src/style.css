@@ -52,6 +52,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
 .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: .8rem; margin-bottom: 1rem; }
 .summary-item { background: var(--background); border-radius: .45rem; padding: 1rem; }
 .summary-item strong { display: block; font-size: 1.6rem; }
+.quality-summary { margin-block: 1rem; }
 details { margin-top: 1rem; }
 summary { cursor: pointer; font-weight: 750; padding-block: .5rem; }
 .table-wrap { max-width: 100%; overflow: auto; margin-top: .5rem; }
@@ -89,6 +90,12 @@ footer { color: var(--muted); padding-block: 2rem 4rem; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
+}
+
+@media (forced-colors: active) {
+  button, input, select, .panel, .story, .status:not(:empty), .notice { border: 1px solid ButtonText; background: Canvas; color: CanvasText; }
+  a { color: LinkText; }
+  button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible, a:focus-visible { outline: 3px solid Highlight; }
 }
 
 @media (prefers-color-scheme: dark) {

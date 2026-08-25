@@ -1,3 +1,5 @@
+import { formatDisplayValue } from "../data/ingestion.js";
+
 function cellText(value) {
   if (value === null || value === undefined || value === "") return "Not supplied";
   if (typeof value === "object") return JSON.stringify(value);
@@ -32,7 +34,7 @@ export function renderTable(container, rows, caption) {
     const tr = document.createElement("tr");
     columns.forEach((column) => {
       const td = document.createElement("td");
-      td.textContent = cellText(row[column]);
+      td.textContent = formatDisplayValue(row[column], column) || cellText(row[column]);
       tr.append(td);
     });
     body.append(tr);

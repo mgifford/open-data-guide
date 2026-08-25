@@ -31,6 +31,7 @@ npm run preview
 - Authoritative data dictionary retrieval when a distribution supplies `describedBy`.
 - Dataset markers stored in IndexedDB.
 - Local CSV, JSON, and Parquet querying with DuckDB-Wasm.
+- Deterministic delimiter parsing, textual-null detection, field profiling, date display, and large-resource refusal.
 - Field and row previews.
 - A deliberately small natural-language interpreter for count, sum, average, minimum, and maximum questions.
 - Field validation before SQL generation.

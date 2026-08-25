@@ -47,7 +47,7 @@ export function compilePlan(plan, fields) {
     "FROM dataset",
     where.length ? `WHERE ${where.join(" AND ")}` : "",
     dimension ? `GROUP BY ${dimension}` : "",
-    "ORDER BY value DESC",
+    dimension ? "ORDER BY value DESC, category ASC" : "ORDER BY value DESC",
     `LIMIT ${plan.limit || 100}`,
   ].filter(Boolean).join("\n");
 }

@@ -40,7 +40,11 @@ function rowsOf(table) {
 function readerFor(format, filename) {
   if (format === "parquet") return `read_parquet('${filename}')`;
   if (format === "json") return `read_json_auto('${filename}')`;
-  return `read_csv_auto('${filename}', header = true, sample_size = 20000)`;
+  return `read_csv_auto('${filename}', header = true, sample_size = 20000, nullstr = ['None', 'NULL', 'null', 'N/A', 'NA'])`;
+}
+
+function quoteIdentifier(value) {
+  return `"${String(value).replaceAll('"', '""')}"`;
 }
 
 export async function loadResource(resource) {
@@ -56,7 +60,17 @@ export async function loadResource(resource) {
     type: field.column_type,
     nullable: field.null === "YES",
   }));
-  return { fields, preview, filename };
+  const qualitySelect = fields.flatMap((field) => [
+    `count(*) - count(${quoteIdentifier(field.name)}) AS ${quoteIdentifier(`${field.name}__null_count`)}`,
+    `count(DISTINCT ${quoteIdentifier(field.name)}) AS ${quoteIdentifier(`${field.name}__distinct_count`)}`,
+  ]);
+  const quality = rowsOf(await connection.query(`SELECT count(*) AS row_count, ${qualitySelect.join(", ")} FROM dataset`))[0] || {};
+  fields.forEach((field) => {
+    field.nullCount = Number(quality[`${field.name}__null_count`] || 0);
+    field.distinctCount = Number(quality[`${field.name}__distinct_count`] || 0);
+    field.warnings = field.nullCount ? [`${field.nullCount} value(s) were recognized as missing, including configured textual null sentinels.`] : [];
+  });
+  return { fields, preview, filename, quality: { rowCount: Number(quality.row_count || 0), rawValuesRetained: true } };
 }
 
 export async function runQuery(sql) {

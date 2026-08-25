@@ -9,12 +9,13 @@ import { loadResource, runQuery } from "./data/duckdb.js";
 import { compilePlan, interpretQuestion } from "./query/plan.js";
 import { renderTable } from "./render/table.js";
 import { renderChart } from "./render/chart.js";
+import { shouldRefuseResource } from "./data/ingestion.js";
 
 const elements = Object.fromEntries([
   "dataset-form", "dataset-url", "sample-button", "status", "dataset-section", "dataset-heading",
   "dataset-description", "dataset-metadata", "platform-label", "resource-control", "size-warning",
   "load-resource-button", "save-button", "explore-section", "profile-summary", "fields-table",
-  "preview-table", "question-section", "question-form", "question", "plan-form", "aggregation",
+  "preview-table", "quality-summary", "question-section", "question-form", "question", "plan-form", "aggregation",
   "measure", "dimension", "query-output", "result-explanation", "result-table", "chart", "sql-output",
   "provenance", "saved-list", "related-list", "semantic-button", "capability-output",
   "catalog-form", "catalog-url", "catalog-query", "catalog-results", "history-search-form", "history-query", "history-list", "export-button",
@@ -49,6 +50,13 @@ function resultStory(rows, plan) {
   const largest = ranked[0];
   const smallest = ranked[ranked.length - 1];
   return `The largest returned value is ${largest.category} (${largest.value}); the smallest is ${smallest.category} (${smallest.value}). This is a ${plan.aggregation} grouped by ${plan.dimension}, not a causal explanation. The table contains ${rows.length} returned categories.`;
+}
+
+async function refreshStorageSummary() {
+  const [datasets, queries, relationships] = await Promise.all([
+    listRecords("datasets"), listRecords("queries"), listRecords("relationships"),
+  ]);
+  elements["storage-summary"].textContent = `Local cache: ${datasets.length} saved dataset${datasets.length === 1 ? "" : "s"}, ${queries.length} saved quer${queries.length === 1 ? "y" : "ies"}, and ${relationships.length} relationship record${relationships.length === 1 ? "" : "s"}. Source files are not copied here.`;
 }
 
 function plainText(value) {
@@ -102,6 +110,7 @@ async function refreshHistory(filter = "") {
     remove.addEventListener("click", async () => {
       await deleteRecord("queries", record.id);
       await refreshHistory(elements["history-query"].value);
+      await refreshStorageSummary();
       setStatus("Analysis removed from this browser.");
     });
     actions.append(rerun, remove);
@@ -175,6 +184,7 @@ async function updateResourceWarning() {
   currentResource = selectedResource();
   elements["size-warning"].hidden = true;
   elements["size-warning"].textContent = "";
+  elements["load-resource-button"].disabled = false;
   if (!currentResource) return;
   if (/very large file/i.test(currentDataset.description || "")) {
     elements["size-warning"].hidden = false;
@@ -184,7 +194,11 @@ async function updateResourceWarning() {
   try {
     const response = await fetch(currentResource.url, { method: "HEAD" });
     const bytes = Number(response.headers.get("content-length"));
-    if (bytes > 200_000_000) {
+    if (shouldRefuseResource(bytes)) {
+      elements["load-resource-button"].disabled = true;
+      elements["size-warning"].hidden = false;
+      elements["size-warning"].textContent = `This resource is approximately ${(bytes / 1_000_000).toFixed(0)} MB. Automatic browser loading is refused above 500 MB to protect memory. Choose a smaller resource or a portal API.`;
+    } else if (bytes > 200_000_000) {
       elements["size-warning"].hidden = false;
       elements["size-warning"].textContent = `This resource is approximately ${(bytes / 1_000_000).toFixed(0)} MB. Loading it may use substantial bandwidth and browser memory.`;
     }
@@ -227,6 +241,21 @@ function renderProfile(profile) {
     documented_definition: field.description || "Not supplied",
   })), "Fields found in this resource");
   renderTable(elements["preview-table"], profile.preview, "First 20 rows");
+  elements["quality-summary"].replaceChildren();
+  const qualityHeading = document.createElement("h3");
+  qualityHeading.textContent = "Data quality before analysis";
+  const qualityNote = document.createElement("p");
+  qualityNote.textContent = `The resource contains ${profile.quality?.rowCount ?? "an unknown number of"} rows. Empty values and configured textual sentinels (None, NULL, null, N/A, and NA) are treated as missing for calculations. Original source values remain available from the publisher URL.`;
+  const qualityRows = currentFields.map((field) => ({
+    field: field.name,
+    inferred_type: field.type,
+    missing_values: field.nullCount ?? "Not profiled",
+    distinct_values: field.distinctCount ?? "Not profiled",
+    warnings: field.warnings?.join(" ") || "None",
+  }));
+  const qualityTable = document.createElement("div");
+  elements["quality-summary"].append(qualityHeading, qualityNote, qualityTable);
+  renderTable(qualityTable, qualityRows, "Profile for fields used in analysis");
   fillSelect(elements.measure, numeric, false);
   fillSelect(elements.dimension, currentFields, true);
   elements["explore-section"].hidden = false;
@@ -307,8 +336,8 @@ elements["plan-form"].addEventListener("submit", async (event) => {
     const rows = await runQuery(sql);
     elements["query-output"].hidden = false;
     elements["result-explanation"].textContent = plan.dimension
-      ? `Calculated ${plan.aggregation} and grouped the result by ${plan.dimension}. The table is the primary result; the chart is an additional view.`
-      : `Calculated ${plan.aggregation} across all loaded rows.`;
+      ? `Calculated ${plan.aggregation} and grouped the result by ${plan.dimension}. The table contains all ${rows.length} returned categories; the chart displays at most 15.`
+      : `Calculated ${plan.aggregation} across all loaded rows. The table contains all ${rows.length} returned result row(s), within the limit of ${plan.limit || 100}.`;
     elements["story-text"].textContent = resultStory(rows, plan);
     renderTable(elements["result-table"], rows, `Result for: ${elements.question.value}`);
     await renderChart(elements.chart, rows, plan);
@@ -349,6 +378,7 @@ elements["plan-form"].addEventListener("submit", async (event) => {
       lastRunAt: new Date().toISOString(),
     });
     await refreshHistory();
+    await refreshStorageSummary();
     setStatus("Query complete. Review the table, chart, and SQL.");
   } catch (error) {
     setStatus(error.message, "error");
@@ -425,9 +455,7 @@ async function refreshSaved() {
     savedDatasets.forEach((dataset) => elements["saved-list"].append(datasetCard(dataset)));
   }
   renderRelated();
-  const queryCount = (await listRecords("queries")).length;
-  const relationshipCount = (await listRecords("relationships")).length;
-  elements["storage-summary"].textContent = `Local cache: ${savedDatasets.length} saved dataset${savedDatasets.length === 1 ? "" : "s"}, ${queryCount} saved quer${queryCount === 1 ? "y" : "ies"}, and ${relationshipCount} relationship record${relationshipCount === 1 ? "" : "s"}. Source files are not copied here.`;
+  await refreshStorageSummary();
 }
 
 async function runAppProvidedSemanticMatching() {
@@ -516,6 +544,7 @@ elements["import-input"].addEventListener("change", async () => {
     await importWorkspace(JSON.parse(await file.text()));
     await refreshSaved();
     await refreshHistory();
+    await refreshStorageSummary();
     setStatus("Workspace imported into this browser.");
   } catch (error) {
     setStatus(`Workspace import failed: ${error.message}`, "error");
@@ -528,6 +557,7 @@ elements["clear-data-button"].addEventListener("click", async () => {
   await clearWorkspace();
   await refreshSaved();
   await refreshHistory();
+  await refreshStorageSummary();
   setStatus("Local application data deleted. Browser-managed model cache is separate.");
 });
 

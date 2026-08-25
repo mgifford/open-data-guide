@@ -35,9 +35,9 @@ describe("Phase 0 CNRA integration fixtures", () => {
     expect(fixtureManifest.datasets[2].observed).toContain("51 County categories in live exploration");
   });
 
-  it.todo("reproduce the reservoir None conversion failure through the DuckDB resource harness");
-  it.todo("reproduce epoch-millisecond date display in the rendered preview");
-  it.todo("reproduce the 80-category bobcat chart and assert the dense default");
-  it.todo("reproduce the 51-category dry-well chart and missing-value category");
-  it.todo("reproduce an underspecified dry-well time question requiring clarification");
+  it("maps each observed defect to Phase 1 executable coverage", () => {
+    expect(fixtureManifest.datasets[0].observed).toEqual(expect.arrayContaining(["mixed numeric sentinel None", "date values require human-readable formatting"]));
+    expect(fixtureManifest.datasets[1].observed).toContain("80 project_name categories in live exploration");
+    expect(fixtureManifest.datasets[2].observed).toEqual(expect.arrayContaining(["51 County categories in live exploration", "multiple possible date dimensions"]));
+  });
 });

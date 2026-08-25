@@ -48,4 +48,10 @@ describe("constrained query plans", () => {
   it("rejects unbounded result limits", () => {
     expect(() => compilePlan({ aggregation: "count", limit: 5000 }, fields)).toThrow(/limit/);
   });
+
+  it("does not reference a grouping alias for an overall result", () => {
+    const sql = compilePlan({ aggregation: "count", dimension: "" }, fields);
+    expect(sql).toContain("ORDER BY value DESC");
+    expect(sql).not.toContain("category ASC");
+  });
 });
