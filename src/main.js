@@ -10,6 +10,8 @@ import { loadResource, runQuery } from "./data/duckdb.js";
 import { compilePlan, interpretQuestion, validatePlan } from "./query/plan.js";
 import { renderTable } from "./render/table.js";
 import { renderChart } from "./render/chart.js";
+import { renderSchematic } from "./render/schematic.js";
+import { describeResult } from "./render/advisor.js";
 import { shouldRefuseResource } from "./data/ingestion.js";
 
 const elements = Object.fromEntries([
@@ -18,6 +20,7 @@ const elements = Object.fromEntries([
   "load-resource-button", "save-button", "explore-section", "profile-summary", "fields-table",
   "preview-table", "quality-summary", "question-section", "question-form", "question", "question-interpret-button", "plan-form", "aggregation",
   "measure", "dimension", "run-plan-button", "plan-review", "query-output", "result-explanation", "result-table", "chart", "sql-output",
+    "schematic-view",
   "provenance", "saved-list", "related-list", "semantic-button", "capability-output",
   "catalog-form", "catalog-url", "catalog-query", "catalog-results", "history-search-form", "history-query", "history-list", "export-button",
   "import-input", "clear-data-button", "storage-summary", "story-text", "export-receipt", "clarification-output",
@@ -26,6 +29,7 @@ const elements = Object.fromEntries([
 let currentDataset = null;
 let currentResource = null;
 let currentFields = [];
+let currentQualities = {};
 let savedDatasets = [];
 let historyRecords = [];
 let dismissedRelated = new Set();
@@ -409,6 +413,10 @@ function fillSelect(select, fields, includeNone) {
 
 function renderProfile(profile) {
   currentFields = profile.fields;
+  currentQualities = Object.fromEntries(currentFields.flatMap((field) => [
+    [`${field.name}__null_count`, field.nullCount],
+    [`${field.name}__distinct_count`, field.distinctCount],
+  ]).filter(([, value]) => value !== undefined));
   const numeric = currentFields.filter((field) => !["postal-code", "zip-code", "zip-plus-four", "zcta", "fips"].includes(field.semanticRole) && /INT|DECIMAL|DOUBLE|FLOAT|REAL|NUMERIC|HUGEINT/i.test(field.type));
   elements["profile-summary"].replaceChildren();
   [["Fields", currentFields.length], ["Previewed rows", profile.preview.length], ["Numeric fields", numeric.length]].forEach(([label, value]) => {
@@ -570,9 +578,8 @@ elements["plan-form"].addEventListener("submit", async (event) => {
     setStatus("Running the validated query in DuckDB-Wasm...");
     const rows = await runQuery(sql);
     elements["query-output"].hidden = false;
-    elements["result-explanation"].textContent = plan.dimension
-      ? `Calculated ${plan.aggregation} and grouped the result by ${plan.dimension}. The table contains all ${rows.length} returned categories; the chart displays at most 15.`
-      : `Calculated ${plan.aggregation} across all loaded rows. The table contains all ${rows.length} returned result row(s), within the limit of ${plan.limit || 100}.`;
+    renderSchematic(elements["schematic-view"], currentFields, currentQualities, currentResource);
+    elements["result-explanation"].textContent = describeResult(plan, { kind: plan.dimension ? "bar" : "table" }, rows.length, rows.length);
     elements["story-text"].textContent = resultStory(rows, plan);
     renderTable(elements["result-table"], rows, `Result for: ${elements.question.value}`);
     await renderChart(elements.chart, rows, plan, currentFields);
