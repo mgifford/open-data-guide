@@ -54,4 +54,9 @@ describe("constrained query plans", () => {
     expect(sql).toContain("ORDER BY value DESC");
     expect(sql).not.toContain("category ASC");
   });
+
+  it("rejects numeric calculations over postal and Census geography codes", () => {
+    expect(() => compilePlan({ aggregation: "avg", measure: "state", dimension: "" }, [{ name: "state", type: "VARCHAR", semanticRole: "zip-code" }])).toThrow(/labels/);
+    expect(() => compilePlan({ aggregation: "distinct_count", measure: "state", dimension: "" }, [{ name: "state", type: "VARCHAR", semanticRole: "zip-code" }])).not.toThrow();
+  });
 });

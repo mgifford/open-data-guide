@@ -3,6 +3,7 @@ import mvpModule from "@duckdb/duckdb-wasm/dist/duckdb-mvp.wasm?url";
 import ehModule from "@duckdb/duckdb-wasm/dist/duckdb-eh.wasm?url";
 import mvpWorker from "@duckdb/duckdb-wasm/dist/duckdb-browser-mvp.worker.js?url";
 import ehWorker from "@duckdb/duckdb-wasm/dist/duckdb-browser-eh.worker.js?url";
+import { detectSemanticRole } from "./geography.js";
 
 const BUNDLES = {
   mvp: { mainModule: mvpModule, mainWorker: mvpWorker },
@@ -59,6 +60,7 @@ export async function loadResource(resource) {
     name: field.column_name,
     type: field.column_type,
     nullable: field.null === "YES",
+    semanticRole: detectSemanticRole(field.column_name),
   }));
   const qualitySelect = fields.flatMap((field) => [
     `count(*) - count(${quoteIdentifier(field.name)}) AS ${quoteIdentifier(`${field.name}__null_count`)}`,

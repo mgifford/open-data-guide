@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { decodeUtf8, detectDelimiter, formatDisplayValue, parseDelimited, profileRows, shouldRefuseResource } from "../src/data/ingestion.js";
+import { detectSemanticRole, normalizeGeographicValue, validateGeographicValue } from "../src/data/geography.js";
 import reservoirCsv from "./fixtures/cnra-reservoir.csv?raw";
 
 const dryWell = "Report Date;County;Note\n2024-01-01;Alameda;\"well; repaired\"\n2024-02-01;None;\"line one\nline two\"\n";
@@ -31,5 +32,27 @@ describe("deterministic ingestion and profiling", () => {
   it("refuses resources above the browser memory budget", () => {
     expect(shouldRefuseResource(500_000_001)).toBe(true);
     expect(shouldRefuseResource(500_000_000)).toBe(false);
+  });
+
+  it("detects geographic roles and preserves postal strings", () => {
+    expect(detectSemanticRole("ZIP")).toBe("zip-code");
+    expect(detectSemanticRole("postal_code")).toBe("postal-code");
+    expect(detectSemanticRole("ZIP Plus 4")).toBe("zip-plus-four");
+    expect(detectSemanticRole("zcta_code")).toBe("zcta");
+    expect(detectSemanticRole("county_fips")).toBe("fips");
+    expect(detectSemanticRole("latitude")).toBe("latitude");
+    expect(detectSemanticRole("longitude")).toBe("longitude");
+    expect(profileRows("ZIP\n00501\n02108\n90210\n90210-1234\nK1P 5G4\nNot supplied\n").fields[0]).toMatchObject({ semanticRole: "zip-code", inferredType: "text", sentinelCount: 1 });
+    expect(normalizeGeographicValue("00501", "zip-code")).toEqual({ rawValue: "00501", normalizedValue: "00501" });
+    expect(normalizeGeographicValue("90210-1234", "zip-plus-four").normalizedValue).toBe("90210-1234");
+  });
+
+  it("requires country context and distinguishes USPS formats from ZCTA", () => {
+    expect(validateGeographicValue("00501", "zip-code").status).toBe("country-required");
+    expect(validateGeographicValue("00501", "zip-code", "US").status).toBe("valid-format");
+    expect(validateGeographicValue("90210-1234", "zip-plus-four", "US").status).toBe("valid-format");
+    expect(validateGeographicValue("K1P 5G4", "postal-code", "CA").status).toBe("valid-format");
+    expect(validateGeographicValue("90210", "zcta", "US").status).toBe("not-a-postal-validation");
+    expect(validateGeographicValue("Not supplied", "postal-code", "US").status).toBe("missing");
   });
 });

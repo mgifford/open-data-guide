@@ -32,6 +32,7 @@ npm run preview
 - Dataset markers stored in IndexedDB.
 - Local CSV, JSON, and Parquet querying with DuckDB-Wasm.
 - Deterministic delimiter parsing, textual-null detection, field profiling, date display, and large-resource refusal.
+- Postal, ZIP+4, ZCTA, FIPS, latitude, and longitude role detection with leading-zero preservation and country-aware validation.
 - Field and row previews.
 - A deliberately small natural-language interpreter for count, sum, average, minimum, and maximum questions.
 - Field validation before SQL generation.
@@ -70,4 +71,3 @@ The Vite base path is relative, so the build works for both a user site and a pr
 ## License
 
 MIT. Model and upstream library licenses remain their own.
-# open-data-guide

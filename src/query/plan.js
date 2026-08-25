@@ -1,5 +1,6 @@
 const AGGREGATIONS = new Set(["count", "distinct_count", "sum", "avg", "median", "min", "max"]);
 const FILTER_OPERATORS = new Set(["equals", "not_equals", "greater_than", "greater_or_equal", "less_than", "less_or_equal"]);
+const GEOGRAPHIC_CODE_ROLES = new Set(["postal-code", "zip-code", "zip-plus-four", "zcta", "fips"]);
 
 export function quoteIdentifier(value) {
   return `"${String(value).replaceAll('"', '""')}"`;
@@ -18,6 +19,10 @@ export function validatePlan(plan, fields) {
   if (plan.dimension && !names.has(plan.dimension)) throw new Error("The grouping field is not in this dataset.");
   if (!["count"].includes(plan.aggregation) && !names.has(plan.measure)) throw new Error("Choose a measure field for this calculation.");
   if (plan.aggregation === "distinct_count" && !plan.measure) throw new Error("Choose a field for the distinct count.");
+  const measureField = fields.find((field) => field.name === plan.measure);
+  if (measureField?.semanticRole && GEOGRAPHIC_CODE_ROLES.has(measureField.semanticRole) && plan.aggregation !== "distinct_count") {
+    throw new Error("Postal and Census geography codes are labels, not numeric measures. Use a distinct count or group by the field.");
+  }
   (plan.filters || []).forEach((filter) => {
     if (!names.has(filter.field)) throw new Error("A filter field is not in this dataset.");
     if (!FILTER_OPERATORS.has(filter.operator)) throw new Error("Unsupported filter operator.");

@@ -1,4 +1,6 @@
-export const NULL_SENTINELS = ["", "None", "NULL", "null", "N/A", "NA"];
+import { CODE_ROLES, detectSemanticRole, normalizeGeographicValue } from "./geography.js";
+
+export const NULL_SENTINELS = ["", "None", "NULL", "null", "N/A", "NA", "Not supplied"];
 export const MAX_BROWSER_RESOURCE_BYTES = 500_000_000;
 
 const DATE_NAME = /(date|time|timestamp|year)/i;
@@ -62,7 +64,7 @@ export function normalizeRows(text, delimiter = detectDelimiter(text)) {
       sentinelCounts[header] += 1;
       return [header, null];
     }
-    return [header, value];
+    return [header, normalizeGeographicValue(value, detectSemanticRole(header)).normalizedValue];
   })));
   return { headers, rawRows, normalizedRows, sentinelCounts, delimiter };
 }
@@ -76,14 +78,16 @@ function numberValue(value) {
 export function profileRows(text, delimiter) {
   const normalized = normalizeRows(text, delimiter);
   const fields = normalized.headers.map((name) => {
+    const semanticRole = detectSemanticRole(name);
     const values = normalized.normalizedRows.map((row) => row[name]);
     const nonNull = values.filter((value) => value !== null && value !== "");
     const numbers = nonNull.map(numberValue);
-    const numeric = numbers.length === nonNull.length && nonNull.length > 0;
+    const numeric = !CODE_ROLES.has(semanticRole) && numbers.length === nonNull.length && nonNull.length > 0;
     const dates = DATE_NAME.test(name) ? nonNull.map((value) => new Date(value)).filter((date) => !Number.isNaN(date.valueOf())) : [];
     const distinct = new Set(nonNull.map(String));
     return {
       name,
+      semanticRole,
       inferredType: numeric ? "number" : dates.length === nonNull.length && dates.length > 0 ? "date" : "text",
       nullCount: values.length - nonNull.length,
       sentinelCount: normalized.sentinelCounts[name],
@@ -93,7 +97,11 @@ export function profileRows(text, delimiter) {
       maximum: numeric ? Math.max(...numbers) : "",
       dateRange: dates.length ? [new Date(Math.min(...dates.map((date) => date.valueOf()))).toISOString(), new Date(Math.max(...dates.map((date) => date.valueOf()))).toISOString()] : [],
       likelyIdentifier: distinct.size === nonNull.length && nonNull.length > 1,
-      warnings: normalized.sentinelCounts[name] ? [`${normalized.sentinelCounts[name]} textual null sentinel(s) normalized to SQL NULL; raw values remain available for audit.`] : [],
+      warnings: [
+        ...(normalized.sentinelCounts[name] ? [`${normalized.sentinelCounts[name]} textual null sentinel(s) normalized to SQL NULL; raw values remain available for audit.`] : []),
+        ...(semanticRole === "zcta" ? ["ZCTA values describe Census statistical areas; they are not USPS ZIP codes or address locations."] : []),
+        ...(CODE_ROLES.has(semanticRole) ? ["Stored as text to preserve leading zeros. Country context is required for validation."] : []),
+      ],
     };
   });
   return { ...normalized, fields };

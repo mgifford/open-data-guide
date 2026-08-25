@@ -225,7 +225,7 @@ function fillSelect(select, fields, includeNone) {
 
 function renderProfile(profile) {
   currentFields = profile.fields;
-  const numeric = currentFields.filter((field) => /INT|DECIMAL|DOUBLE|FLOAT|REAL|NUMERIC|HUGEINT/i.test(field.type));
+  const numeric = currentFields.filter((field) => !["postal-code", "zip-code", "zip-plus-four", "zcta", "fips"].includes(field.semanticRole) && /INT|DECIMAL|DOUBLE|FLOAT|REAL|NUMERIC|HUGEINT/i.test(field.type));
   elements["profile-summary"].replaceChildren();
   [["Fields", currentFields.length], ["Previewed rows", profile.preview.length], ["Numeric fields", numeric.length]].forEach(([label, value]) => {
     const item = document.createElement("div");
@@ -248,6 +248,7 @@ function renderProfile(profile) {
   qualityNote.textContent = `The resource contains ${profile.quality?.rowCount ?? "an unknown number of"} rows. Empty values and configured textual sentinels (None, NULL, null, N/A, and NA) are treated as missing for calculations. Original source values remain available from the publisher URL.`;
   const qualityRows = currentFields.map((field) => ({
     field: field.name,
+    semantic_role: field.semanticRole || "Not inferred",
     inferred_type: field.type,
     missing_values: field.nullCount ?? "Not profiled",
     distinct_values: field.distinctCount ?? "Not profiled",
