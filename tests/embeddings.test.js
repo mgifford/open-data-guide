@@ -1,20 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { EMBEDDING_MODEL, EMBEDDING_MODEL_VERSION, embeddingCacheKey, semanticMatch } from "../src/ai/embeddings.js";
+import { EMBEDDING_MODEL, EMBEDDING_MODEL_REVISION, EMBEDDING_MODEL_VERSION, embeddingCacheKey, semanticMatch } from "../src/ai/embeddings.js";
 
 describe("semantic embedding cache", () => {
-  it("includes source digest, model, and version in cache keys", () => {
-    const key = embeddingCacheKey({ sourceDigest: "digest-a" });
-    expect(key).toContain("digest-a");
+  it("includes canonical metadata text, model, and version in cache keys", async () => {
+    const key = await embeddingCacheKey({ title: "Groundwater", fields: [{ name: "county", description: "County name" }] });
+    expect(key).toMatch(/^[a-f0-9]{64}:/);
     expect(key).toContain(EMBEDDING_MODEL);
+    expect(key).toContain(EMBEDDING_MODEL_REVISION);
     expect(key).toContain(EMBEDDING_MODEL_VERSION);
   });
 
-  it("does not cache datasets without a source digest", () => {
-    expect(embeddingCacheKey({ key: "dataset-a" })).toBe("");
+  it("can cache catalog records without a source-file digest", async () => {
+    expect(await embeddingCacheKey({ key: "dataset-a", title: "Groundwater" })).not.toBe("");
   });
 
-  it("invalidates a cached key when the source digest changes", () => {
-    expect(embeddingCacheKey({ sourceDigest: "digest-a" })).not.toBe(embeddingCacheKey({ sourceDigest: "digest-b" }));
+  it("invalidates a cached key when embedded metadata changes", async () => {
+    expect(await embeddingCacheKey({ title: "Groundwater" })).not.toBe(await embeddingCacheKey({ title: "Dry wells" }));
   });
 
   it("keeps deterministic evidence separate from semantic similarity", () => {

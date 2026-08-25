@@ -21,10 +21,11 @@ export const ANALYSIS_PLAN_SCHEMA = {
     timeField: { type: "string" },
     filters: { type: "array", maxItems: 20, items: { type: "object", additionalProperties: false, required: ["field", "operator", "value"], properties: { field: { type: "string" }, operator: { type: "string", enum: ["equals", "not_equals", "greater_than", "greater_or_equal", "less_than", "less_or_equal"] }, value: {} } } },
     limit: { type: "integer", minimum: 1, maximum: 1000 },
+    order: { type: "string", enum: ["asc", "desc"] },
     visualization: { type: "object", additionalProperties: false, required: ["kind", "x", "y", "series"], properties: { kind: { type: "string", enum: ["table", "bar", "line", "scatter", "histogram"] }, x: { type: ["string", "null"] }, y: { type: ["string", "null"] }, series: { type: ["string", "null"] } } },
     assumptions: { type: "array", items: { type: "string" }, maxItems: 20 },
     warnings: { type: "array", items: { type: "string" }, maxItems: 20 },
-    clarification: { type: "object", additionalProperties: false, required: ["kind", "message", "choices"], properties: { kind: { type: "string", enum: ["choose-time-field", "avoid-causal-claim", "review-data-meaning", "choose-missing-field", "unsupported-shape"] }, message: { type: "string", minLength: 1 }, choices: { type: "array", minItems: 1, maxItems: 5, items: { type: "string", minLength: 1 } } } },
+    clarification: { type: "object", additionalProperties: false, required: ["kind", "message", "choices"], properties: { kind: { type: "string", enum: ["choose-time-field", "avoid-causal-claim", "review-data-meaning", "choose-missing-field", "choose-measure", "unsupported-shape"] }, message: { type: "string", minLength: 1 }, choices: { type: "array", minItems: 1, maxItems: 5, items: { type: "string", minLength: 1 } } } },
   },
   oneOf: [
     { properties: { status: { const: "ready" } }, required: ["version", "status", "question", "aggregation", "measure", "dimension", "filters", "limit", "visualization"] },
@@ -43,7 +44,7 @@ export function validateProviderPlan(plan, fields) {
   if (plan.version !== 1 || typeof plan.question !== "string" || !["ready", "needs-clarification"].includes(plan.status)) throw new Error("Provider returned an invalid plan envelope.");
   if (plan.status === "needs-clarification") {
     if (Object.keys(plan).some((key) => ["aggregation", "measure", "dimension", "filters", "limit", "visualization"].includes(key))) throw new Error("Clarification plans cannot contain executable fields.");
-    if (!plan.clarification || typeof plan.clarification.message !== "string" || !plan.clarification.message.trim() || !Array.isArray(plan.clarification.choices) || !plan.clarification.choices.length || plan.clarification.choices.length > 5 || plan.clarification.choices.some((choice) => typeof choice !== "string" || !choice.trim())) throw new Error("Provider returned an invalid clarification.");
+    if (!plan.clarification || typeof plan.clarification.kind !== "string" || !["choose-time-field", "avoid-causal-claim", "review-data-meaning", "choose-missing-field", "choose-measure", "unsupported-shape"].includes(plan.clarification.kind) || typeof plan.clarification.message !== "string" || !plan.clarification.message.trim() || !Array.isArray(plan.clarification.choices) || !plan.clarification.choices.length || plan.clarification.choices.length > 5 || plan.clarification.choices.some((choice) => typeof choice !== "string" || !choice.trim())) throw new Error("Provider returned an invalid clarification.");
     return true;
   }
   if (!AGGREGATIONS.has(plan.aggregation) || typeof plan.measure !== "string" || typeof plan.dimension !== "string" || !Array.isArray(plan.filters) || plan.filters.length > 20 || !Number.isInteger(plan.limit) || plan.limit < 1 || plan.limit > 1000 || (plan.order !== undefined && !["asc", "desc"].includes(plan.order)) || !plan.visualization || !VISUALIZATIONS.has(plan.visualization.kind)) throw new Error("Provider returned an invalid ready plan.");
@@ -81,7 +82,7 @@ export const deterministicProvider = {
     if (/join|select\s+\*|invented|unknown column|average fips|arbitrary sql|unknown column|as zip/i.test(question)) throw new Error("Unsupported question or operation.");
     if (/denominator|ignore all safeguards|zcta demographics|suppressed payments/i.test(question)) return { version: 1, status: "needs-clarification", question, clarification: { kind: "review-data-meaning", message: "This request needs review of the field meaning, denominator, or suppression rules before it can be planned.", choices: ["Review the data dictionary", "Choose a documented measure", "Keep the result descriptive"] } };
     const plan = deterministicPlan(question, fields);
-    if (plan.status === "ready" && plan.aggregation !== "count" && !plan.measure) return { ...plan, status: "needs-clarification", clarification: { message: "Choose the numeric measure for this calculation.", choices: fields.filter((field) => /INT|DECIMAL|DOUBLE|FLOAT|REAL|NUMERIC|HUGEINT/i.test(field.type || "")).map((field) => field.name).slice(0, 5) } };
+    if (plan.status === "ready" && plan.aggregation !== "count" && !plan.measure) return { ...plan, status: "needs-clarification", clarification: { kind: "choose-measure", message: "Choose the numeric measure for this calculation.", choices: fields.filter((field) => /INT|DECIMAL|DOUBLE|FLOAT|REAL|NUMERIC|HUGEINT/i.test(field.type || "")).map((field) => field.name).slice(0, 5) } };
     if (plan.status === "ready") validateProviderPlan(plan, fields);
     return plan;
   },

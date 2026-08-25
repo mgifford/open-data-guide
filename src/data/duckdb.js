@@ -94,6 +94,16 @@ export async function loadResource(resource) {
     nullable: field.null === "YES",
     semanticRole: detectSemanticRole(field.column_name),
   }));
+  const profileByName = new Map((sourceProfile?.fields || []).map((field) => [field.name, field]));
+  fields.forEach((field) => {
+    const profiled = profileByName.get(field.name);
+    if (profiled) {
+      field.dateRange = profiled.dateRange || [];
+      field.minimum = profiled.minimum;
+      field.maximum = profiled.maximum;
+      field.inferredType = profiled.inferredType;
+    }
+  });
   const qualitySelect = fields.flatMap((field) => [
     `count(*) - count(${quoteIdentifier(field.name)}) AS ${quoteIdentifier(`${field.name}__null_count`)}`,
     `count(DISTINCT ${quoteIdentifier(field.name)}) AS ${quoteIdentifier(`${field.name}__distinct_count`)}`,

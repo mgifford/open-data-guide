@@ -26,7 +26,7 @@ export async function renderChart(container, rows, plan, fields = []) {
 
   // Normalize results for top-N with "Other"
   let chartRows = normalizeResults(rows, plan, advisedChart);
-  chartRows = chartRowsFor(chartRows, CHART_DISPLAY_LIMIT);
+  chartRows = chartRowsFor(chartRows, advisedChart.otherCategory ? CHART_DISPLAY_LIMIT + 1 : CHART_DISPLAY_LIMIT);
 
   const mark = advisedChart.kind === "line" ? "line" : "bar";
   const fieldType = mark === "line" ? "temporal" : "nominal";

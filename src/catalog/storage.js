@@ -115,9 +115,9 @@ export function deleteRecord(storeName, key) {
   return transact([storeName], "readwrite", (stores) => stores[storeName].delete(key));
 }
 
-export async function exportWorkspace() {
+export async function exportWorkspace({ includeEmbeddings = false } = {}) {
   const records = {};
-  for (const storeName of STORES) records[storeName] = await listRecords(storeName);
+  for (const storeName of STORES) records[storeName] = storeName === "embeddings" && !includeEmbeddings ? [] : await listRecords(storeName);
   return { version: DB_VERSION, exportedAt: new Date().toISOString(), records };
 }
 

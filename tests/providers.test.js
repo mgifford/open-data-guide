@@ -48,7 +48,7 @@ describe("analysis plan providers", () => {
   });
 
   it("validates ready and clarification plans independently", () => {
-    expect(validateProviderPlan({ version: 1, status: "needs-clarification", question: "compare", clarification: { message: "Choose a measure", choices: ["Count", "Sum"] } }, fields)).toBe(true);
+    expect(validateProviderPlan({ version: 1, status: "needs-clarification", question: "compare", clarification: { kind: "choose-measure", message: "Choose a measure", choices: ["Count", "Sum"] } }, fields)).toBe(true);
     expect(() => validateProviderPlan({ version: 1, status: "needs-clarification", question: "compare", clarification: { message: "Choose", choices: ["Count"] }, aggregation: "count" }, fields)).toThrow(/executable/);
     expect(() => validateProviderPlan({ version: 1, status: "ready", question: "x", aggregation: "count", measure: "", dimension: "", filters: [], limit: 100, visualization: { kind: "table", x: null, y: "value", series: null }, extra: true }, fields)).toThrow(/property/);
   });

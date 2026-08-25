@@ -20,6 +20,7 @@ flowchart TD
 
 - IndexedDB stores dataset markers, normalized metadata, saved field dictionaries, and future relationship records.
 - The browser cache used by Transformers.js stores model artifacts. The browser may evict them.
+- Optional semantic vectors are stored separately in IndexedDB and keyed by a SHA-256 digest of canonical catalog text plus model identifier and version. Ordinary workspace exports omit this cache.
 - Source dataset files are not copied into IndexedDB in this draft.
 - `localStorage` is intentionally not used for data records.
 
@@ -42,6 +43,10 @@ WebGPU and WebNN indicate local compute capacity. They do not indicate that a mo
 - Query generation uses an allow-list of aggregations and quotes identifiers.
 - Results show the generated SQL and source URL.
 - “Related dataset” does not imply join compatibility.
+
+## Phase 6 semantic discovery
+
+Semantic matching is opt-in and local. It may compare the current dataset with saved markers, fetched catalog candidates, and historical query signals. Deterministic catalog scoring and relationship evidence remain visible; semantic similarity never grants comparison or join compatibility.
 
 ## Next technical slices
 

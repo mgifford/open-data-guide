@@ -32,6 +32,7 @@ let currentResource = null;
 let currentFields = [];
 let currentQualities = {};
 let savedDatasets = [];
+let catalogCandidates = [];
 let historyRecords = [];
 let dismissedRelated = new Set();
 let pendingHistoryRecord = null;
@@ -126,13 +127,20 @@ function showClarification(plan) {
   });
   const button = document.createElement("button");
   button.type = "button";
-  button.textContent = plan.clarification.kind === "choose-time-field" ? "Use this date field for review" : "Use this choice for review";
+  button.textContent = "Use this date field for review";
+  button.hidden = plan.clarification.kind !== "choose-time-field";
   button.addEventListener("click", () => {
-    if (plan.clarification.kind === "choose-time-field") elements.question.value = `${elements.question.value.replace(/\?$/, "")} by ${select.value}`;
+    elements.question.value = `${elements.question.value.replace(/\?$/, "")} by ${select.value}`;
     elements["clarification-output"].replaceChildren();
     elements["question-form"].requestSubmit();
   });
-  fieldset.append(legend, label, select, button);
+  if (plan.clarification.kind !== "choose-time-field") {
+    const note = document.createElement("p");
+    note.textContent = "These choices provide guidance only. No executable plan has been created.";
+    fieldset.append(legend, label, select, note);
+  } else {
+    fieldset.append(legend, label, select, button);
+  }
   elements["clarification-output"].append(fieldset);
 }
 
@@ -173,6 +181,7 @@ function metadataList(container, entries) {
 
 function renderCatalogResults(datasets, total, start = 0, query = "", rawCount = datasets.length) {
   elements["catalog-results"].replaceChildren();
+  catalogCandidates = datasets;
   if (!datasets.length) {
     elements["catalog-results"].textContent = "No datasets matched those terms in this data catalog.";
     return;
@@ -706,7 +715,7 @@ function datasetCard(dataset) {
 
 function renderRelated(results = null, semantic = false) {
   elements["related-list"].replaceChildren();
-  if (!currentDataset || savedDatasets.length < 2) return;
+  if (!currentDataset || (!savedDatasets.length && !catalogCandidates.length && !historyRecords.length)) return;
   const matches = (results || relatedDatasets(currentDataset, savedDatasets)).filter((match) => !dismissedRelated.has(match.dataset.key));
   if (!matches.length) return;
   const heading = document.createElement("h3");
@@ -751,14 +760,16 @@ async function runAppProvidedSemanticMatching() {
     setStatus("Inspect a dataset before comparing it with saved datasets.");
     return;
   }
-  if (savedDatasets.length < 2) {
-    setStatus("Save at least two datasets before using semantic matching.");
+  const historyCandidates = historyRecords.map((record) => ({ key: `history:${record.id}`, title: record.question || "Previous analysis", description: `Historical query signal for ${record.sourceUrl || "this dataset"}` }));
+  const candidates = [...new Map([...savedDatasets, ...catalogCandidates, ...historyCandidates].filter((candidate) => candidate.key !== currentDataset.key).map((candidate) => [candidate.key, candidate])).values()];
+  if (!candidates.length) {
+    setStatus("Search the catalog or save another dataset before using semantic matching.");
     return;
   }
   setStatus("Downloading or opening the local MiniLM embedding model...");
   try {
     const { semanticRelated } = await import("./ai/embeddings.js");
-    const results = await semanticRelated(currentDataset, savedDatasets, (progress) => {
+    const results = await semanticRelated(currentDataset, candidates, (progress) => {
       if (progress.status === "progress" && progress.progress) {
         setStatus(`Downloading the local model: ${Math.round(progress.progress)}%`);
       }
@@ -849,7 +860,7 @@ function renderCapabilityReport(report, decision) {
   const fallbackSummary = document.createElement("summary");
   fallbackSummary.textContent = "Use app-provided MiniLM matching";
   const disclosure = document.createElement("p");
-  disclosure.textContent = "Model: Xenova/all-MiniLM-L6-v2. Source: Hugging Face Transformers.js CDN. License: Apache-2.0 for the model and runtime; review the model card and library notices before use. Transfer: approximately 90 MB, browser-managed. Purpose: compare catalog titles, descriptions, and field descriptions locally; raw dataset rows are not sent. Storage: cached vectors are keyed by source digest and model version in this browser. Removal: use the browser site-data controls to remove the model cache; the Clear local application data action removes cached vectors and saved metadata only.";
+  disclosure.textContent = "Model: Xenova/all-MiniLM-L6-v2, revision 751bff37182d3f1213fa05d7196b954e230abad9. Source: Hugging Face Transformers.js CDN. License: Apache-2.0 for the model and runtime; review the model card and library notices before use. Transfer: q8 model files are approximately 23 MB, plus browser runtime/configuration overhead; browser-managed. Purpose: compare catalog titles, descriptions, and field descriptions locally; raw dataset rows are not sent. Storage: cached vectors are keyed by canonical metadata text, model revision, and runtime/dtype version in this browser. Removal: use the browser site-data controls to remove the model cache; the Clear local application data action removes cached vectors and saved metadata only.";
   const consent = document.createElement("button");
   consent.type = "button";
   consent.className = "button-secondary";

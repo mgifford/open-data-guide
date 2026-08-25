@@ -219,4 +219,12 @@ describe("visualization advisor", () => {
     expect(normalized.at(-1)._isOtherCategory).toBe(true);
     expect(normalized).toHaveLength(16);
   });
+
+  it("retains all top 15 categories plus Other", () => {
+    const rows = Array.from({ length: 20 }, (_, i) => ({ category: `Item-${i}`, value: i + 1 }));
+    const advice = adviseChartKind({ aggregation: "count", dimension: "item_id" }, basicFields, rows);
+    const normalized = normalizeResults(rows, { aggregation: "count", dimension: "item_id" }, advice);
+    expect(normalized.slice(0, 15).map((row) => row.category)).toEqual(rows.slice(0, 15).map((row) => row.category));
+    expect(normalized[15]._isOtherCategory).toBe(true);
+  });
 });

@@ -32,9 +32,9 @@ export function renderSchematic(container, fields = [], qualities = {}, resource
   fieldCount.innerHTML = `<strong>${fields.length}</strong> fields`;
   stats.appendChild(fieldCount);
 
-  const qualityScore = calculateHealthScore(fields, qualities);
   const healthText = document.createElement("p");
-  healthText.innerHTML = `<strong>Health:</strong> ${healthIndicator(qualityScore)}`;
+  const completeness = calculateCompleteness(fields, qualities);
+  healthText.innerHTML = `<strong>Completeness:</strong> ${completeness}% of profiled cells contain values`;
   stats.appendChild(healthText);
 
   section.appendChild(stats);
@@ -131,7 +131,7 @@ export function renderSchematic(container, fields = [], qualities = {}, resource
     const df = dateFields[0];
     const nf = numericFields[0];
     const li = document.createElement("li");
-    li.textContent = `How did ${nf.name} change over ${df.name}?`;
+    li.textContent = `Choose a calculation for ${nf.name} over ${df.name}`;
     suggestedList.appendChild(li);
   }
 
@@ -141,24 +141,14 @@ export function renderSchematic(container, fields = [], qualities = {}, resource
   container.appendChild(section);
 }
 
-function calculateHealthScore(fields = [], qualities = {}) {
+function calculateCompleteness(fields = [], qualities = {}) {
   if (!fields.length) return 0;
-
-  let score = 100;
   const rowCount = Number(qualities.__row_count);
-  fields.forEach((field) => {
+  if (!rowCount) return 0;
+  const cells = fields.length * rowCount;
+  const missing = fields.reduce((total, field) => {
     const nullKey = `${field.name}__null_count`;
-    const nullCount = qualities[nullKey] || 0;
-    const missingRatio = rowCount > 0 ? nullCount / rowCount : nullCount > 0 ? 1 : 0;
-    score -= Math.min(20, Math.round(missingRatio * 100));
-  });
-
-  return Math.max(0, score);
-}
-
-function healthIndicator(score) {
-  if (score >= 90) return `✓ Excellent (${score}%)`;
-  if (score >= 70) return `~ Good (${score}%)`;
-  if (score >= 50) return `⚠ Fair (${score}%)`;
-  return `✗ Poor (${score}%)`;
+    return total + Number(qualities[nullKey] || 0);
+  }, 0);
+  return Math.max(0, Math.round(((cells - missing) / cells) * 100));
 }

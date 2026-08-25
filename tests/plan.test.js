@@ -79,6 +79,11 @@ describe("constrained query plans", () => {
     ]);
     expect(result.status).toBe("needs-clarification");
     expect(result.clarification.choices).toEqual(["Report Date", "Create Date"]);
+    expect(result.clarification.kind).toBe("choose-time-field");
+  });
+
+  it("types non-date clarifications", () => {
+    expect(interpretQuestion("why did payments increase", fields).clarification.kind).toBe("avoid-causal-claim");
   });
 
   it("proposes the only date field without silently hiding the choice", () => {

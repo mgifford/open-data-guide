@@ -19,7 +19,7 @@ Status: Phase 4B implementation complete for the local-browser provider contract
 
 ## Verification
 
-- `npm test`: 95 passing project tests across 12 files, including provider lifecycle and exact-plan evaluation tests.
+- `npm test`: 104 passing project tests across 13 files, including provider lifecycle and exact-plan evaluation tests.
 - `npm run test:browser`: 22 passing tests across Chromium and Firefox.
 - `npm run build`: passed. Existing Vite warning remains for DuckDB-Wasm chunks over 500 kB.
 - `get_errors` on provider source, tests, and browser-facing main module: no errors.
