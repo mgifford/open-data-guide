@@ -62,6 +62,16 @@ describe("constrained query plans", () => {
     expect(() => compilePlan({ aggregation: "distinct_count", measure: "state", dimension: "" }, [{ name: "state", type: "VARCHAR", semanticRole: "zip-code" }])).not.toThrow();
   });
 
+  it("rejects averages over categorical fields", () => {
+    expect(() => compilePlan({ aggregation: "avg", measure: "state", dimension: "" }, fields)).toThrow(/numeric measure/);
+  });
+
+  it("compiles ranked queries with explicit direction and limit", () => {
+    const sql = compilePlan({ aggregation: "count", dimension: "state", order: "asc", limit: 5 }, fields);
+    expect(sql).toContain('ORDER BY value ASC, category ASC');
+    expect(sql).toContain("LIMIT 5");
+  });
+
   it("requires a date choice when change questions have multiple date fields", () => {
     const result = interpretQuestion("How have dry well reports changed over time?", [
       { name: "Report Date", type: "DATE" },
@@ -84,7 +94,7 @@ describe("constrained query plans", () => {
     expect(evaluationCases).toHaveLength(40);
     expect(new Set(evaluationCases.map((item) => item.kind))).toEqual(new Set(["ready", "clarification", "rejection"]));
     const results = await evaluatePlanningCases(evaluationCases, [
-      { name: "state", type: "VARCHAR" }, { name: "amount_usd", type: "DOUBLE" }, { name: "payment_date", type: "DATE" },
+      { name: "state", type: "VARCHAR" }, { name: "amount_usd", type: "DOUBLE" }, { name: "payment_date", type: "DATE" }, { name: "county", type: "VARCHAR" }, { name: "site", type: "VARCHAR" },
       { name: "ZIP", type: "VARCHAR", semanticRole: "zip-code" }, { name: "FIPS", type: "VARCHAR", semanticRole: "fips" },
     ]);
     expect(results.every((result) => result.passed)).toBe(true);

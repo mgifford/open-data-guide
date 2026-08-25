@@ -4,7 +4,9 @@ import { adviseChartKind, normalizeResults, chartDescription } from "./advisor.j
 export const CHART_DISPLAY_LIMIT = 15;
 
 export function chartRowsFor(rows, limit = CHART_DISPLAY_LIMIT) {
-  return rows.slice(0, limit);
+  const visible = rows.slice(0, limit);
+  const other = rows.find((row) => row._isOtherCategory);
+  return other && !visible.includes(other) ? [...visible.slice(0, limit - 1), other] : visible;
 }
 
 export function chartKindFor(plan, fields = []) {
@@ -16,11 +18,11 @@ export function chartKindFor(plan, fields = []) {
 
 export async function renderChart(container, rows, plan, fields = []) {
   container.replaceChildren();
-  if (!rows.length || !plan.dimension) return;
+  if (!rows.length || !plan.dimension) return null;
 
   // Use deterministic advisor for chart type selection
   const advisedChart = adviseChartKind(plan, fields, rows);
-  if (advisedChart.kind === "table") return; // Don't render chart
+  if (advisedChart.kind === "table") return null; // Don't render chart
 
   // Normalize results for top-N with "Other"
   let chartRows = normalizeResults(rows, plan, advisedChart);
@@ -37,7 +39,7 @@ export async function renderChart(container, rows, plan, fields = []) {
 
   const chartDesc = chartDescription(plan, advisedChart, rows);
   const otherNote = chartRows.some((r) => r._isOtherCategory)
-    ? ` The "Other" category groups ${rows.slice(CHART_DISPLAY_LIMIT).length} remaining ${rows.length === CHART_DISPLAY_LIMIT + 1 ? "result" : "results"}.`
+    ? ` The "Other" category groups ${rows.length - CHART_DISPLAY_LIMIT} remaining ${rows.length - CHART_DISPLAY_LIMIT === 1 ? "result" : "results"}.`
     : "";
 
   description.textContent = `${chartDesc} It displays ${chartRows.length} ${chartRows.length === 1 ? "category" : "categories"}. The result table contains all ${rows.length} returned values.${otherNote}`;
@@ -77,4 +79,5 @@ export async function renderChart(container, rows, plan, fields = []) {
   }
 
   await embed(chartHost, spec, { actions: true, renderer: "svg" });
+  return spec;
 }

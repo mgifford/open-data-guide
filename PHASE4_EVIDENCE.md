@@ -10,7 +10,7 @@ Status: Phase 4B implementation complete for the local-browser provider contract
 - Capability detection remains side-effect-free: it calls availability only and never calls `LanguageModel.create()`.
 - Browser session creation happens only from the explicit capability-panel action and only when availability is ready.
 - Browser planning uses a strict versioned JSON Schema, passes only normalized metadata and bounded field summaries, validates the returned plan with the existing deterministic validator, and rejects invented fields.
-- Added a 40-case planning evaluation fixture covering valid operations, ambiguity, geography, missing/suppressed values, prompt-injection text, causal claims, unsupported joins/SQL, invalid fields, and provider failure states.
+- Added a 40-case planning evaluation fixture covering valid operations, ambiguity, geography, missing/suppressed values, prompt-injection text, causal claims, unsupported joins/SQL, invalid fields, provider failure states, and exact expected plan fields for ranked/time-shaped cases.
 - Added compatibility fallback when a browser implementation does not accept `responseConstraint`; returned JSON still passes the same validator before use.
 - Result provenance records the planning backend and model identity where exposed, while never claiming a browser-managed model name the API does not reveal.
 - Browser sessions expose explicit disposal through `close()`.
@@ -19,7 +19,7 @@ Status: Phase 4B implementation complete for the local-browser provider contract
 
 ## Verification
 
-- `npm test`: 71 passing tests across 11 files, including provider lifecycle and executable evaluation tests.
+- `npm test`: 95 passing project tests across 12 files, including provider lifecycle and exact-plan evaluation tests.
 - `npm run test:browser`: 22 passing tests across Chromium and Firefox.
 - `npm run build`: passed. Existing Vite warning remains for DuckDB-Wasm chunks over 500 kB.
 - `get_errors` on provider source, tests, and browser-facing main module: no errors.
@@ -31,4 +31,4 @@ Status: Phase 4B implementation complete for the local-browser provider contract
 - The provider does not execute SQL or calculate results; it only returns a validated plan. DuckDB-Wasm remains the calculation engine.
 - No app-provided generative fallback, cloud model, embeddings change, external service, telemetry, or automatic join was added.
 
-Phase 4B is complete for the implemented scope. The 40-case evaluation is executable and passing. Phase 5 can begin with reviewed multi-dataset relationships and comparisons; it must not introduce automatic joins or cloud inference.
+Phase 4B is complete for the implemented scope. The 40-case evaluation is executable and checks selected plan semantics, not only status. Phase 5 visualization and result-export work is documented in `PHASE5_EVIDENCE.md`; reviewed multi-dataset relationships remain future work.

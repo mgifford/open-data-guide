@@ -5,7 +5,8 @@ function cellValue(value) {
 }
 
 function csvCell(value) {
-  const text = cellValue(value);
+  const rawText = cellValue(value);
+  const text = /^[=+\-@]/.test(rawText) ? `'${rawText}` : rawText;
   return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
 
@@ -18,8 +19,8 @@ export function resultsToCsv(rows = []) {
   ].join("\n");
 }
 
-export function resultsToJson({ metadata = {}, plan = {}, sql = "", rows = [] } = {}) {
-  return JSON.stringify({ metadata, plan, query: sql, results: rows }, null, 2);
+export function resultsToJson({ metadata = {}, plan = {}, sql = "", rows = [], vegaLiteSpec = null } = {}) {
+  return JSON.stringify({ metadata, plan, query: sql, results: rows, vegaLiteSpec }, null, 2);
 }
 
 export function downloadText(filename, content, type = "text/plain;charset=utf-8") {

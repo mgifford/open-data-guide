@@ -74,11 +74,12 @@ describe("visualization advisor", () => {
     expect(normalized.length).toBeLessThanOrEqual(16);
   });
 
-  it("recommends map for geographic dimension", () => {
+  it("uses a labeled bar fallback for geographic identifiers", () => {
     const plan = { aggregation: "count", dimension: "county" };
     const advice = adviseChartKind(plan, geoFields, [{ category: "Alameda", value: 10 }]);
-    expect(advice.kind).toBe("map");
-    expect(advice.textAlternativeRequired).toBe(true);
+    expect(advice.kind).toBe("bar");
+    expect(advice.geographicFallback).toBe(true);
+    expect(advice.warnings[0]).toContain("reference geometry");
   });
 
   it("returns table for no dimension", () => {
@@ -121,7 +122,7 @@ describe("visualization advisor", () => {
     const plan = { aggregation: "count", dimension: "county" };
     const advice = adviseChartKind(plan, geoFields, [{ category: "Alameda", value: 10 }]);
     expect(advice.assumptions.length).toBeGreaterThan(0);
-    expect(advice.assumptions[0]).toContain("table");
+    expect(advice.assumptions[0]).toContain("labeled data");
   });
 
   it("includes assumption notes for top-N truncation", () => {
@@ -201,5 +202,21 @@ describe("visualization advisor", () => {
     const advice = adviseChartKind(plan, basicFields, rows);
     const desc = chartDescription(plan, advice, rows);
     expect(desc).toContain("Note:");
+  });
+
+  it("does not combine non-additive high-cardinality values into Other", () => {
+    const rows = Array.from({ length: 20 }, (_, i) => ({ category: `Item-${i}`, value: 100 - i }));
+    const advice = adviseChartKind({ aggregation: "avg", dimension: "item_id" }, basicFields, rows);
+    expect(advice.otherCategory).toBe(false);
+    expect(normalizeResults(rows, { aggregation: "avg", dimension: "item_id" }, advice)).toHaveLength(15);
+    expect(advice.assumptions[0]).toContain("not combined");
+  });
+
+  it("keeps Other in the chart row limit", () => {
+    const rows = Array.from({ length: 20 }, (_, i) => ({ category: `Item-${i}`, value: 1 }));
+    const advice = adviseChartKind({ aggregation: "count", dimension: "item_id" }, basicFields, rows);
+    const normalized = normalizeResults(rows, { aggregation: "count", dimension: "item_id" }, advice);
+    expect(normalized.at(-1)._isOtherCategory).toBe(true);
+    expect(normalized).toHaveLength(16);
   });
 });

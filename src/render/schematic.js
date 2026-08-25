@@ -96,7 +96,7 @@ export function renderSchematic(container, fields = [], qualities = {}, resource
     const dateList = document.createElement("ul");
     dateFields.forEach((f) => {
       const li = document.createElement("li");
-      li.textContent = f.name;
+      li.textContent = `${f.name}: ${f.dateRange?.length === 2 ? `${new Date(f.dateRange[0]).toLocaleDateString()} to ${new Date(f.dateRange[1]).toLocaleDateString()}` : "range not available"}`;
       dateList.appendChild(li);
     });
     dateSection.appendChild(dateList);
@@ -135,12 +135,6 @@ export function renderSchematic(container, fields = [], qualities = {}, resource
     suggestedList.appendChild(li);
   }
 
-  if (categoricalFields.length > 1) {
-    const li = document.createElement("li");
-    li.textContent = `Count of records by ${categoricalFields[0].name} and ${categoricalFields[1].name}`;
-    suggestedList.appendChild(li);
-  }
-
   suggestedSection.appendChild(suggestedList);
   section.appendChild(suggestedSection);
 
@@ -151,10 +145,12 @@ function calculateHealthScore(fields = [], qualities = {}) {
   if (!fields.length) return 0;
 
   let score = 100;
+  const rowCount = Number(qualities.__row_count);
   fields.forEach((field) => {
     const nullKey = `${field.name}__null_count`;
     const nullCount = qualities[nullKey] || 0;
-    if (nullCount > 0) score -= Math.min(20, nullCount * 5);
+    const missingRatio = rowCount > 0 ? nullCount / rowCount : nullCount > 0 ? 1 : 0;
+    score -= Math.min(20, Math.round(missingRatio * 100));
   });
 
   return Math.max(0, score);

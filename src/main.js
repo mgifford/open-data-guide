@@ -20,7 +20,7 @@ const elements = Object.fromEntries([
   "dataset-description", "dataset-metadata", "platform-label", "resource-control", "size-warning",
   "load-resource-button", "save-button", "explore-section", "profile-summary", "fields-table",
   "preview-table", "quality-summary", "question-section", "question-form", "question", "question-interpret-button", "plan-form", "aggregation",
-  "measure", "dimension", "run-plan-button", "plan-review", "query-output", "result-explanation", "result-table", "chart", "sql-output", "download-csv-button", "download-json-button",
+  "measure", "dimension", "run-plan-button", "plan-review", "query-output", "result-explanation", "result-table", "chart", "sql-output", "download-csv-button", "download-json-button", "download-spec-button",
     "schematic-view",
   "provenance", "saved-list", "related-list", "semantic-button", "capability-output",
   "catalog-form", "catalog-url", "catalog-query", "catalog-results", "history-search-form", "history-query", "history-list", "export-button",
@@ -107,7 +107,7 @@ function formatDate(value) {
   return Number.isNaN(date.valueOf()) ? value : date.toLocaleDateString();
 }
 
-function showDateClarification(plan) {
+function showClarification(plan) {
   elements["clarification-output"].replaceChildren();
   if (plan.status !== "needs-clarification" || !plan.clarification?.choices?.length) return;
   const fieldset = document.createElement("fieldset");
@@ -115,7 +115,7 @@ function showDateClarification(plan) {
   legend.textContent = plan.clarification.message;
   const label = document.createElement("label");
   label.htmlFor = "clarification-choice";
-  label.textContent = "Date field to use";
+  label.textContent = plan.clarification.kind === "choose-time-field" ? "Date field to use" : "Choice";
   const select = document.createElement("select");
   select.id = "clarification-choice";
   plan.clarification.choices.forEach((choice) => {
@@ -126,9 +126,9 @@ function showDateClarification(plan) {
   });
   const button = document.createElement("button");
   button.type = "button";
-  button.textContent = "Use this date field for review";
+  button.textContent = plan.clarification.kind === "choose-time-field" ? "Use this date field for review" : "Use this choice for review";
   button.addEventListener("click", () => {
-    elements.question.value = `${elements.question.value.replace(/\?$/, "")} by ${select.value}`;
+    if (plan.clarification.kind === "choose-time-field") elements.question.value = `${elements.question.value.replace(/\?$/, "")} by ${select.value}`;
     elements["clarification-output"].replaceChildren();
     elements["question-form"].requestSubmit();
   });
@@ -419,6 +419,7 @@ function renderProfile(profile) {
     [`${field.name}__null_count`, field.nullCount],
     [`${field.name}__distinct_count`, field.distinctCount],
   ]).filter(([, value]) => value !== undefined));
+  currentQualities.__row_count = profile.quality?.rowCount ?? profile.preview?.length ?? 0;
   const numeric = currentFields.filter((field) => !["postal-code", "zip-code", "zip-plus-four", "zcta", "fips"].includes(field.semanticRole) && /INT|DECIMAL|DOUBLE|FLOAT|REAL|NUMERIC|HUGEINT/i.test(field.type));
   elements["profile-summary"].replaceChildren();
   [["Fields", currentFields.length], ["Previewed rows", profile.preview.length], ["Numeric fields", numeric.length]].forEach(([label, value]) => {
@@ -557,7 +558,7 @@ elements["question-form"].addEventListener("submit", (event) => {
   elements["plan-form"].hidden = false;
   if (plan.status === "needs-clarification") {
     elements["plan-form"].hidden = true;
-    showDateClarification(plan);
+    showClarification(plan);
     setStatus(`${plan.clarification.message} Choices: ${plan.clarification.choices.join("; ")}`);
   } else if (plan.aggregation !== "count" && !plan.measure) {
     elements["clarification-output"].replaceChildren();
@@ -579,13 +580,13 @@ elements["plan-form"].addEventListener("submit", async (event) => {
     const sql = compilePlan(plan, currentFields);
     setStatus("Running the validated query in DuckDB-Wasm...");
     const rows = await runQuery(sql);
-    currentResult = { rows, plan, sql };
+    currentResult = { rows, plan, sql, vegaLiteSpec: null };
     elements["query-output"].hidden = false;
     renderSchematic(elements["schematic-view"], currentFields, currentQualities, currentResource);
     elements["result-explanation"].textContent = describeResult(plan, { kind: plan.dimension ? "bar" : "table" }, rows.length, rows.length);
     elements["story-text"].textContent = resultStory(rows, plan);
     renderTable(elements["result-table"], rows, `Result for: ${elements.question.value}`);
-    await renderChart(elements.chart, rows, plan, currentFields);
+    currentResult.vegaLiteSpec = await renderChart(elements.chart, rows, plan, currentFields);
     elements["sql-output"].textContent = sql;
     metadataList(elements.provenance, [
       ["Dataset", currentDataset.title],
@@ -620,7 +621,7 @@ elements["plan-form"].addEventListener("submit", async (event) => {
       rowsExcluded: null,
       exclusionReasons: [],
       visualizationIntent: plan.dimension ? "grouped" : "table",
-      vegaLiteSpec: null,
+      vegaLiteSpec: currentResult.vegaLiteSpec,
       narrative: elements["result-explanation"].textContent,
       modelBackend: activePlannerProvenance.modelBackend,
       modelIdentifier: activePlannerProvenance.modelIdentifier,
@@ -653,6 +654,11 @@ elements["download-csv-button"].addEventListener("click", () => {
 elements["download-json-button"].addEventListener("click", () => {
   if (!currentResult) return;
   downloadText("open-data-guide-results.json", resultsToJson({ ...currentResult, metadata: resultMetadata() }), "application/json;charset=utf-8");
+});
+
+elements["download-spec-button"].addEventListener("click", () => {
+  if (!currentResult?.vegaLiteSpec) return;
+  downloadText("open-data-guide-chart.vl.json", JSON.stringify(currentResult.vegaLiteSpec, null, 2), "application/json;charset=utf-8");
 });
 
 elements["save-button"].addEventListener("click", async () => {
@@ -916,7 +922,7 @@ async function runBrowserPlanner() {
     activePlan = plan;
     renderPlanReview(plan);
     elements["plan-form"].hidden = plan.status === "needs-clarification";
-    if (plan.status === "needs-clarification") showDateClarification(plan);
+    if (plan.status === "needs-clarification") showClarification(plan);
     else setStatus("Browser-provided AI suggested a constrained plan. Review it before running the deterministic query.");
   } catch (error) {
     setStatus(`Browser-provided planning failed: ${error.message}. The deterministic planner remains available.`, "error");
@@ -957,7 +963,7 @@ async function runHuggingFacePlanner() {
     activePlan = plan;
     renderPlanReview(plan);
     elements["plan-form"].hidden = plan.status === "needs-clarification";
-    if (plan.status === "needs-clarification") showDateClarification(plan);
+    if (plan.status === "needs-clarification") showClarification(plan);
     else setStatus("The local model suggested a constrained plan. Review it before running the deterministic query.");
   } catch (error) {
     setStatus(`Local model planning failed: ${error.message}. The deterministic planner remains available.`, "error");

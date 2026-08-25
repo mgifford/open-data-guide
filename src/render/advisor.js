@@ -63,16 +63,16 @@ export function adviseChartKind(plan, fields = [], results = []) {
     };
   }
 
-  // Geographic dimension: offer map with required table alternative
+  // Geographic identifiers do not imply reference geometry, so keep the result textual.
   if (dimensionField?.isGeographic) {
-    assumptions.push(`Geographic field ${plan.dimension} is available for mapping; the table is the required accessible representation.`);
-    warnings.push("Maps require an accessible text alternative. Always check the table for the authoritative result.");
+    assumptions.push(`Geographic identifier ${plan.dimension} is shown as labeled data; reviewed reference geometry is not available.`);
+    warnings.push("Reviewed reference geometry is required for a map. The table is the authoritative representation.");
     return {
-      kind: "map",
-      reason: `Geographic dimension: ${plan.dimension}`,
+      kind: "bar",
+      reason: `Geographic identifier: ${plan.dimension}; using a labeled bar chart until reference geometry is reviewed`,
       warnings,
       assumptions,
-      textAlternativeRequired: true,
+      geographicFallback: true,
     };
   }
 
@@ -80,12 +80,15 @@ export function adviseChartKind(plan, fields = [], results = []) {
   const cardinality = results.length;
   if (cardinality > TOP_N_LIMIT) {
     warnings.push(`Showing top ${TOP_N_LIMIT} of ${cardinality} categories. The result table includes all returned values.`);
-    assumptions.push(`Categories beyond the top ${TOP_N_LIMIT} are visible in the accessible table.`);
+    const additive = ["count", "sum"].includes(plan.aggregation);
+    assumptions.push(additive
+      ? `Categories beyond the top ${TOP_N_LIMIT} are combined into an Other category and remain visible in the accessible table.`
+      : `Only the top ${TOP_N_LIMIT} categories are charted; ${plan.aggregation} values are not combined because that would change their meaning.`);
     return {
       kind: "bar",
       reason: `High-cardinality grouping (${cardinality} unique values); showing top ${TOP_N_LIMIT}`,
       topN: TOP_N_LIMIT,
-      otherCategory: true,
+      otherCategory: additive,
       warnings,
       assumptions,
     };
@@ -117,7 +120,7 @@ export function normalizeResults(rows, plan, advisor) {
   const limited = rows.slice(0, advisor.topN);
   const remaining = rows.slice(advisor.topN);
   
-  if (!remaining.length) return limited;
+  if (!remaining.length || !advisor.otherCategory) return limited;
 
   // Sum remaining rows into "Other"
   const otherValue = remaining.reduce((sum, row) => sum + Number(row.value || 0), 0);
