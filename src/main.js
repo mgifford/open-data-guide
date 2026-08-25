@@ -1,5 +1,5 @@
 import "./style.css";
-import { resolveDataset, loadDataDictionary, searchCkanCatalog } from "./adapters/resolver.js";
+import { resolveDataset, loadDataDictionary, searchCkanCatalogPage } from "./adapters/resolver.js";
 import {
   saveDataset, listDatasets, removeDataset, listRecords, putRecord, deleteRecord,
   exportWorkspace, importWorkspace, clearWorkspace,
@@ -23,10 +23,12 @@ const elements = Object.fromEntries([
 ].map((id) => [id, document.getElementById(id)]));
 
 let currentDataset = null;
+  if (dataset.catalogUrl && dataset.connectorId === "ckan") elements["catalog-url"].value = dataset.catalogUrl;
 let currentResource = null;
 let currentFields = [];
 let savedDatasets = [];
 let historyRecords = [];
+let dismissedRelated = new Set();
 
 function setStatus(message, kind = "info") {
   elements.status.textContent = message;
@@ -74,6 +76,66 @@ function metadataList(container, entries) {
     else dd.textContent = value || "Not supplied";
     container.append(dt, dd);
   });
+}
+
+function renderCatalogResults(datasets, total, start = 0) {
+  elements["catalog-results"].replaceChildren();
+  if (!datasets.length) {
+    elements["catalog-results"].textContent = "No datasets matched those terms in this data catalog.";
+    return;
+  }
+  const heading = document.createElement("p");
+  heading.textContent = `Showing ${start + 1}-${start + datasets.length} of ${total} catalog matches.`;
+  const list = document.createElement("ol");
+  datasets.forEach((dataset) => {
+    const item = document.createElement("li");
+    const link = document.createElement("a");
+    link.href = dataset.sourceUrl;
+    link.textContent = dataset.title;
+    link.addEventListener("click", (event) => {
+      event.preventDefault();
+      elements["dataset-url"].value = dataset.sourceUrl;
+      inspectUrl(dataset.sourceUrl);
+    });
+    const details = document.createElement("span");
+    details.textContent = ` — ${dataset.description || "No description supplied."}`;
+    const save = document.createElement("button");
+    save.type = "button";
+    save.className = "button-secondary compact-button";
+    save.textContent = "Save dataset";
+    save.addEventListener("click", async () => {
+      await saveDataset(dataset);
+      await refreshSaved();
+      save.textContent = "Saved dataset";
+    });
+    item.append(link, details, save);
+    list.append(item);
+  });
+  elements["catalog-results"].append(heading, list);
+  if (start + datasets.length < total) {
+    const next = document.createElement("button");
+    next.type = "button";
+    next.className = "button-secondary";
+    next.textContent = "Load next catalog page";
+    next.addEventListener("click", () => searchCatalog(start + datasets.length));
+    elements["catalog-results"].append(next);
+  }
+}
+
+async function searchCatalog(start = 0) {
+  const catalogUrl = elements["catalog-url"].value.trim() || currentDataset?.catalogUrl;
+  const query = elements["catalog-query"].value.trim();
+  if (!catalogUrl || !query) {
+    setStatus("Enter a data catalog URL and search terms, or open a catalog dataset first.", "error");
+    return;
+  }
+  try {
+    const result = await searchCkanCatalogPage(catalogUrl, query, { start, rows: 20 });
+    renderCatalogResults(result.datasets, result.total, result.start);
+    setStatus(`Found ${result.total} catalog matches.`);
+  } catch (error) {
+    setStatus(`Catalog search failed: ${error.message}. Check the URL, CORS, pagination, or rate limit.`, "error");
+  }
 }
 
 async function refreshHistory(filter = "") {
@@ -432,15 +494,25 @@ function datasetCard(dataset) {
 function renderRelated(results = null, semantic = false) {
   elements["related-list"].replaceChildren();
   if (!currentDataset || savedDatasets.length < 2) return;
-  const matches = results || relatedDatasets(currentDataset, savedDatasets);
+  const matches = (results || relatedDatasets(currentDataset, savedDatasets)).filter((match) => !dismissedRelated.has(match.dataset.key));
   if (!matches.length) return;
   const heading = document.createElement("h3");
   heading.textContent = semantic ? "Semantically related saved datasets" : "Potentially related saved datasets";
   const list = document.createElement("ol");
   matches.slice(0, 5).forEach((match) => {
     const item = document.createElement("li");
-    const reason = semantic ? `${Math.round(match.score * 100)}% vector similarity` : `shared terms: ${match.shared.join(", ")}`;
+    const reason = semantic ? "Optional semantic comparison" : match.reasons.join("; ");
     item.textContent = `${match.dataset.title} (${reason})`;
+    const dismiss = document.createElement("button");
+    dismiss.type = "button";
+    dismiss.className = "button-secondary compact-button";
+    dismiss.textContent = "Dismiss";
+    dismiss.addEventListener("click", async () => {
+      dismissedRelated.add(match.dataset.key);
+      await putRecord("preferences", { key: "dismissed-related", values: [...dismissedRelated] });
+      renderRelated();
+    });
+    item.append(" ", dismiss);
     list.append(item);
   });
   elements["related-list"].append(heading, list);
@@ -490,32 +562,7 @@ elements["history-search-form"].addEventListener("submit", (event) => {
 
 elements["catalog-form"].addEventListener("submit", async (event) => {
   event.preventDefault();
-  try {
-    const results = await searchCkanCatalog(elements["catalog-url"].value.trim(), elements["catalog-query"].value.trim());
-    elements["catalog-results"].replaceChildren();
-    if (!results.length) {
-      elements["catalog-results"].textContent = "No datasets matched those terms.";
-      return;
-    }
-    const list = document.createElement("ol");
-    results.slice(0, 10).forEach((dataset) => {
-      const item = document.createElement("li");
-      const link = document.createElement("a");
-      link.href = dataset.sourceUrl;
-      link.textContent = dataset.title;
-      link.addEventListener("click", (clickEvent) => {
-        clickEvent.preventDefault();
-        elements["dataset-url"].value = dataset.sourceUrl;
-        inspectUrl(dataset.sourceUrl);
-      });
-      item.append(link, document.createTextNode(` — ${dataset.description || "No description supplied."}`));
-      list.append(item);
-    });
-    elements["catalog-results"].append(list);
-    setStatus(`Found ${results.length} catalog matches.`);
-  } catch (error) {
-    setStatus(`Catalog search failed: ${error.message}. Check the URL, CORS, or rate limit.`, "error");
-  }
+  await searchCatalog();
 });
 
 elements["export-button"].addEventListener("click", async () => {
@@ -605,4 +652,7 @@ elements["semantic-button"].addEventListener("click", async () => {
 
 refreshSaved().catch((error) => setStatus(`Browser storage is unavailable: ${error.message}`, "error"));
 refreshHistory().catch((error) => setStatus(`History is unavailable: ${error.message}`, "error"));
+listRecords("preferences").then((records) => {
+  dismissedRelated = new Set(records.find((record) => record.key === "dismissed-related")?.values || []);
+}).catch(() => {});
 clearStatus();

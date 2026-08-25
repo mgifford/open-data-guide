@@ -1,4 +1,4 @@
-const STOP_WORDS = new Set(["and", "the", "for", "from", "with", "data", "dataset", "of", "to", "a", "in"]);
+const STOP_WORDS = new Set(["and", "the", "for", "from", "with", "data", "dataset", "of", "to", "a", "in", "california", "state", "public", "information", "report"]);
 
 export function tokensFor(dataset) {
   const fields = (dataset.fields || []).map((field) => `${field.name || ""} ${field.description || ""}`).join(" ");
@@ -7,14 +7,65 @@ export function tokensFor(dataset) {
     .filter((token) => token.length > 2 && !STOP_WORDS.has(token)));
 }
 
-export function relatedDatasets(current, candidates) {
+function valuesFor(dataset, key) {
+  const value = dataset[key];
+  return new Set((Array.isArray(value) ? value : [value]).filter(Boolean).flatMap((item) => tokensFor({ title: item })));
+}
+
+export function explainRelatedDataset(current, candidate) {
   const source = tokensFor(current);
-  return candidates.filter((candidate) => candidate.key !== current.key).map((candidate) => {
-    const target = tokensFor(candidate);
-    const shared = [...source].filter((token) => target.has(token));
-    const union = new Set([...source, ...target]);
-    return { dataset: candidate, score: union.size ? shared.length / union.size : 0, shared: shared.slice(0, 8) };
-  }).filter((item) => item.score > 0).sort((a, b) => b.score - a.score);
+  const target = tokensFor(candidate);
+  const sharedTerms = [...source].filter((token) => target.has(token));
+  const reasons = [];
+  const evidence = [];
+  const candidatePublisher = String(candidate.publisher || "").toLowerCase();
+  const currentPublisher = String(current.publisher || "").toLowerCase();
+  if (candidatePublisher && currentPublisher && candidatePublisher === currentPublisher) {
+    reasons.push("same publisher");
+    evidence.push({ type: "subject", label: "same publisher", value: candidate.publisher });
+  }
+  const sharedThemes = [...valuesFor(current, "themes")].filter((value) => valuesFor(candidate, "themes").has(value));
+  if (sharedThemes.length) {
+    reasons.push("shared themes");
+    evidence.push({ type: "subject", label: "shared themes", value: sharedThemes.slice(0, 5).join(", ") });
+  }
+  const currentSpatial = tokensFor({ title: current.spatial });
+  const candidateSpatial = tokensFor({ title: candidate.spatial });
+  const sharedGeography = [...currentSpatial].filter((token) => candidateSpatial.has(token));
+  if (sharedGeography.length) {
+    reasons.push("geographic overlap");
+    evidence.push({ type: "geography", label: "shared geography terms", value: sharedGeography.slice(0, 5).join(", ") });
+  }
+  const currentTemporal = tokensFor({ title: current.temporal });
+  const candidateTemporal = tokensFor({ title: candidate.temporal });
+  const sharedTime = [...currentTemporal].filter((token) => candidateTemporal.has(token));
+  if (sharedTime.length) {
+    reasons.push("overlapping time terms");
+    evidence.push({ type: "temporal", label: "shared time terms", value: sharedTime.slice(0, 5).join(", ") });
+  }
+  if (sharedTerms.length) {
+    reasons.push("similar subject wording");
+    evidence.push({ type: "subject", label: "shared subject terms", value: sharedTerms.slice(0, 8).join(", ") });
+  }
+  const currentFields = new Set((current.fields || []).map((field) => String(field.name).toLowerCase()));
+  const sharedFields = (candidate.fields || []).map((field) => field.name).filter((name) => currentFields.has(String(name).toLowerCase()));
+  if (sharedFields.length) {
+    reasons.push("shared field names");
+    evidence.push({ type: "measure", label: "shared field names", value: sharedFields.slice(0, 8).join(", ") });
+  }
+  if (/\bzcta\b|\bcensus\b|\bacs\b/i.test(`${candidate.title} ${candidate.description} ${(candidate.keywords || []).join(" ")}`)) {
+    reasons.push("Census geography requires review");
+    evidence.push({ type: "geography", label: "Census/ZCTA caution", value: "Confirm geography, vintage, estimate, and margin of error; area values do not describe individuals." });
+  }
+  const score = Math.min(1, (sharedTerms.length * 0.04) + (sharedThemes.length * 0.12) + (sharedGeography.length * 0.16) + (sharedTime.length * 0.08) + (sharedFields.length * 0.1) + (candidatePublisher && currentPublisher === candidatePublisher ? 0.15 : 0));
+  return { score, reasons, evidence, shared: sharedTerms.slice(0, 8), joinCandidate: false };
+}
+
+export function relatedDatasets(current, candidates) {
+  return candidates.filter((candidate) => candidate.key !== current.key).map((candidate) => ({
+    dataset: candidate,
+    ...explainRelatedDataset(current, candidate),
+  })).filter((item) => item.score > 0).sort((a, b) => b.score - a.score);
 }
 
 export function cosineSimilarity(a, b) {

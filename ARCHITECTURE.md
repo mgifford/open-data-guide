@@ -46,7 +46,7 @@ WebGPU and WebNN indicate local compute capacity. They do not indicate that a mo
 ## Next technical slices
 
 1. Store typed relationships such as `same_series`, `replaces`, `documents`, and `join_candidate`.
-2. Add catalog search through supported catalog search and metastore queries.
+2. Catalog search uses the explicitly opened dataset's catalog, bounded pagination, and normalized records. Ranking is deterministic and evidence-based; no search result is treated as a join permission.
 3. Add column statistics on explicit request, avoiding automatic full scans of very large CSV files.
 4. Add a restricted filter language and suppression-value handling.
 5. Add an evaluation harness for natural-language query plans.

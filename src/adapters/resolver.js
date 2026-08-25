@@ -7,6 +7,10 @@ function valueOf(value) {
   return value || "";
 }
 
+function arrayOf(value) {
+  return Array.isArray(value) ? value : [];
+}
+
 export function inferFormat(url, declared = "") {
   const normalized = String(declared).toLowerCase().replace(/^\./, "");
   if (SUPPORTED_FORMATS.has(normalized)) return normalized;
@@ -61,9 +65,17 @@ export function normalizeDkan(data, sourceUrl) {
 }
 
 export function normalizeCkan(data, sourceUrl) {
-  const resources = (data.resources || []).map(normalizeResource).filter((item) => item.url);
+  const resources = arrayOf(data.resources).map(normalizeResource).filter((item) => item.url);
   return {
-    ...normalizedDataset({ connectorId: "ckan", catalogUrl: new URL(sourceUrl).origin, modified: data.metadata_modified }),
+    ...normalizedDataset({
+      connectorId: "ckan",
+      catalogUrl: new URL(sourceUrl).origin,
+      modified: data.metadata_modified,
+      themes: arrayOf(data.groups).map((group) => valueOf(group?.name || group?.title || group?.id)).filter(Boolean),
+      keywords: arrayOf(data.tags).map((tag) => valueOf(tag?.name || tag?.display_name)).filter(Boolean),
+      temporal: data.temporal_coverage || data.temporal || "",
+      spatial: data.spatial || data.spatial_coverage || "",
+    }),
     key: `ckan:${data.id || data.name || sourceUrl}`,
     platform: "CKAN",
     id: data.id || data.name || sourceUrl,
@@ -187,12 +199,22 @@ export function connectorFor(url) {
 }
 
 export async function searchCkanCatalog(catalogUrl, query) {
+  return searchCkanCatalogPage(catalogUrl, query, {});
+}
+
+export async function searchCkanCatalogPage(catalogUrl, query, options = {}) {
   const base = new URL(catalogUrl);
   const endpoint = new URL("/api/3/action/package_search", base.origin);
   endpoint.searchParams.set("q", query);
+  endpoint.searchParams.set("rows", String(Math.min(Math.max(Number(options.rows) || 20, 1), 100)));
+  endpoint.searchParams.set("start", String(Math.max(Number(options.start) || 0, 0)));
   const response = await fetchJson(endpoint.href);
   if (!response.success) throw new Error("The CKAN catalog did not return search results.");
-  return (response.result?.results || []).map((item) => normalizeCkan(item, `${base.origin}/dataset/${item.name || item.id}`));
+  return {
+    datasets: (response.result?.results || []).map((item) => normalizeCkan(item, `${base.origin}/dataset/${item.name || item.id}`)),
+    total: Number(response.result?.count || 0),
+    start: Number(options.start) || 0,
+  };
 }
 
 export async function loadDataDictionary(resource) {

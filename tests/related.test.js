@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cosineSimilarity, relatedDatasets } from "../src/catalog/related.js";
+import { cosineSimilarity, explainRelatedDataset, relatedDatasets } from "../src/catalog/related.js";
 import { analyzeJoinCandidate } from "../src/catalog/relationships.js";
 import { chartRowsFor } from "../src/render/chart.js";
 
@@ -13,6 +13,17 @@ describe("related dataset matching", () => {
     ]);
     expect(results[0].dataset.key).toBe("b");
     expect(results[0].shared).toContain("payments");
+    expect(results[0].evidence.some((item) => item.type === "subject")).toBe(true);
+  });
+
+  it("explains geography without implying join compatibility", () => {
+    const result = explainRelatedDataset(
+      { title: "Groundwater levels", spatial: "California counties", fields: [{ name: "county", type: "VARCHAR" }] },
+      { title: "Dry well reports", spatial: "California counties", fields: [{ name: "county", type: "VARCHAR" }] },
+    );
+    expect(result.reasons).toContain("geographic overlap");
+    expect(result.evidence.find((item) => item.type === "geography").label).toBe("shared geography terms");
+    expect(result.joinCandidate).toBe(false);
   });
 
   it("calculates cosine similarity", () => {

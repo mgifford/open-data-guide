@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { connectorFor, inferFormat, normalizeCkan, normalizeDcat, normalizeDkan } from "../src/adapters/resolver.js";
+import { connectorFor, inferFormat, normalizeCkan, normalizeDcat, normalizeDkan, searchCkanCatalogPage } from "../src/adapters/resolver.js";
 
 describe("dataset adapters", () => {
   it("infers supported formats without trusting query parameters", () => {
@@ -47,5 +47,24 @@ describe("dataset adapters", () => {
     expect(connectorFor("https://data.cnra.ca.gov/dataset/gspar")).toBe("dkan-or-ckan");
     expect(connectorFor("https://example.gov/data.csv")).toBe("direct");
     expect(connectorFor("https://github.com/example/public-data")).toBe("github");
+  });
+
+  it("normalizes catalog tags and supports bounded pagination", async () => {
+    globalThis.fetch = async (url) => {
+      expect(url).toContain("rows=10");
+      expect(url).toContain("start=20");
+      return new Response(JSON.stringify({ success: true, result: { count: 21, results: [{ id: "water", title: "Water quality", tags: [{ name: "water" }], groups: [{ name: "water" }], resources: [] }] } }), { status: 200 });
+    };
+    const result = await searchCkanCatalogPage("https://catalog.example.gov", "water", { start: 20, rows: 10 });
+    expect(result.total).toBe(21);
+    expect(result.datasets[0].keywords).toContain("water");
+    expect(result.datasets[0].themes).toContain("water");
+  });
+
+  it("does not fail on malformed optional catalog metadata", () => {
+    const dataset = normalizeCkan({ id: "incomplete", title: "Incomplete record", tags: null, groups: {}, resources: null }, "https://catalog.example.gov/dataset/incomplete");
+    expect(dataset.keywords).toEqual([]);
+    expect(dataset.themes).toEqual([]);
+    expect(dataset.resources).toEqual([]);
   });
 });
