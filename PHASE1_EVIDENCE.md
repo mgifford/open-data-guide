@@ -26,12 +26,14 @@ Status: implementation complete for the bounded Phase 1 slice. Prepared: 2026-08
 ## Deliberate limits
 
 - Phase 1 does not add AI, embeddings, joins, or new repository search.
-- Remote DuckDB loading uses the publisher URL as the raw-value audit source; the JavaScript parser's raw-row retention is used for local text profiling. A future ingestion phase can add a staged raw view for remote sources without duplicating large transfers.
+- CSV loading now exposes a queryable `dataset_raw` all-string view alongside the typed `dataset` projection. Parquet and JSON continue to use DuckDB's native readers; raw-value guarantees are limited to CSV in this phase.
 - Full invalid-encoding recovery, cancellation, and streaming profiling remain future work; invalid UTF-8 is rejected explicitly.
 
 ## Verification
 
 - `npm ci`: passed.
-- `npm test`: 34 passing tests across 6 files.
+- `npm test`: 46 passing tests across 7 files.
+- `npm run test:browser`: 5 passing Chromium tests across the sample, three CNRA fixture flows, and postal/FIPS display.
+- CI installs Chromium before running the browser suite; local smoke testing uses installed Chrome when available.
 - `npm run build`: passed; existing Vite warning remains for chunks over 500 kB because of DuckDB-Wasm.
 - `get_errors` on touched source files: no errors.

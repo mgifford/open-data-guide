@@ -4,6 +4,7 @@ import ehModule from "@duckdb/duckdb-wasm/dist/duckdb-eh.wasm?url";
 import mvpWorker from "@duckdb/duckdb-wasm/dist/duckdb-browser-mvp.worker.js?url";
 import ehWorker from "@duckdb/duckdb-wasm/dist/duckdb-browser-eh.worker.js?url";
 import { detectSemanticRole } from "./geography.js";
+import { decodeUtf8, profileRows } from "./ingestion.js";
 
 const BUNDLES = {
   mvp: { mainModule: mvpModule, mainWorker: mvpWorker },
@@ -38,22 +39,51 @@ function rowsOf(table) {
   return table.toArray().map((row) => jsonSafe(row.toJSON ? row.toJSON() : row));
 }
 
-function readerFor(format, filename) {
+function readerFor(format, filename, options = "") {
   if (format === "parquet") return `read_parquet('${filename}')`;
   if (format === "json") return `read_json_auto('${filename}')`;
-  return `read_csv_auto('${filename}', header = true, sample_size = 20000, nullstr = ['None', 'NULL', 'null', 'N/A', 'NA'])`;
+  return `read_csv_auto('${filename}', header = true, sample_size = 20000, nullstr = ['', 'None', 'NULL', 'null', 'N/A', 'NA', 'Not supplied']${options})`;
+}
+
+function rawCsvReader(filename) {
+  return `read_csv('${filename}', header = true, all_varchar = true, nullstr = ['__OPEN_DATA_GUIDE_NO_NULL_SENTINEL__'])`;
 }
 
 function quoteIdentifier(value) {
   return `"${String(value).replaceAll('"', '""')}"`;
 }
 
+function quoteLiteral(value) {
+  return `'${String(value).replaceAll("'", "''")}'`;
+}
+
+function normalizedSourceExpression(field) {
+  const source = quoteIdentifier(field.name);
+  const missing = `CASE WHEN ${source} IN (${["", "None", "NULL", "null", "N/A", "NA", "Not supplied"].map(quoteLiteral).join(", ")}) THEN NULL ELSE ${source} END`;
+  if (["postal-code", "zip-code", "zip-plus-four", "zcta", "fips"].includes(field.semanticRole)) return `CAST(${missing} AS VARCHAR) AS ${source}`;
+  if (field.inferredType === "number") return `TRY_CAST(${missing} AS DOUBLE) AS ${source}`;
+  if (field.inferredType === "date") return `TRY_CAST(${missing} AS DATE) AS ${source}`;
+  return `${source}`;
+}
+
 export async function loadResource(resource) {
   const db = await database();
   if (!connection) connection = await db.connect();
   const filename = `dataset-${crypto.randomUUID()}.${resource.format}`;
-  await db.registerFileURL(filename, resource.url, duckdb.DuckDBDataProtocol.HTTP, false);
-  await connection.query(`CREATE OR REPLACE VIEW dataset AS SELECT * FROM ${readerFor(resource.format, filename)}`);
+  let sourceProfile = null;
+  if (resource.format === "csv") {
+    const response = await fetch(resource.url);
+    if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+    const text = decodeUtf8(new Uint8Array(await response.arrayBuffer()));
+    sourceProfile = profileRows(text);
+    await db.registerFileText(`${filename}.raw`, text);
+    await connection.query(`CREATE OR REPLACE VIEW dataset_raw AS SELECT * FROM ${rawCsvReader(`${filename}.raw`)}`);
+    const projection = sourceProfile.fields.map(normalizedSourceExpression).join(", ");
+    await connection.query(`CREATE OR REPLACE VIEW dataset AS SELECT ${projection} FROM dataset_raw`);
+  } else {
+    await db.registerFileURL(filename, resource.url, duckdb.DuckDBDataProtocol.HTTP, false);
+    await connection.query(`CREATE OR REPLACE VIEW dataset AS SELECT * FROM ${readerFor(resource.format, filename)}`);
+  }
   const schema = rowsOf(await connection.query("DESCRIBE SELECT * FROM dataset"));
   const preview = rowsOf(await connection.query("SELECT * FROM dataset LIMIT 20"));
   const fields = schema.map((field) => ({
@@ -72,7 +102,7 @@ export async function loadResource(resource) {
     field.distinctCount = Number(quality[`${field.name}__distinct_count`] || 0);
     field.warnings = field.nullCount ? [`${field.nullCount} value(s) were recognized as missing, including configured textual null sentinels.`] : [];
   });
-  return { fields, preview, filename, quality: { rowCount: Number(quality.row_count || 0), rawValuesRetained: true } };
+  return { fields, preview, filename, quality: { rowCount: Number(quality.row_count || 0), rawValuesRetained: resource.format === "csv", parseFailures: sourceProfile?.parseFailures || [] } };
 }
 
 export async function runQuery(sql) {

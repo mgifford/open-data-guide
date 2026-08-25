@@ -1,10 +1,10 @@
 import "./style.css";
-import { resolveDataset, loadDataDictionary, searchCkanCatalogPage } from "./adapters/resolver.js";
+import { resolveDataset, loadDataDictionary, searchCkanCatalogPage, searchDkanCatalogPage } from "./adapters/resolver.js";
 import {
   saveDataset, listDatasets, removeDataset, listRecords, putRecord, deleteRecord,
   exportWorkspace, importWorkspace, clearWorkspace,
 } from "./catalog/storage.js";
-import { relatedDatasets } from "./catalog/related.js";
+import { catalogSearchTerms, explainRelatedDataset, relatedDatasets } from "./catalog/related.js";
 import { loadResource, runQuery } from "./data/duckdb.js";
 import { compilePlan, interpretQuestion } from "./query/plan.js";
 import { renderTable } from "./render/table.js";
@@ -23,7 +23,6 @@ const elements = Object.fromEntries([
 ].map((id) => [id, document.getElementById(id)]));
 
 let currentDataset = null;
-  if (dataset.catalogUrl && dataset.connectorId === "ckan") elements["catalog-url"].value = dataset.catalogUrl;
 let currentResource = null;
 let currentFields = [];
 let savedDatasets = [];
@@ -87,7 +86,8 @@ function renderCatalogResults(datasets, total, start = 0) {
   const heading = document.createElement("p");
   heading.textContent = `Showing ${start + 1}-${start + datasets.length} of ${total} catalog matches.`;
   const list = document.createElement("ol");
-  datasets.forEach((dataset) => {
+  const unique = [...new Map(datasets.filter((dataset) => dataset.key !== currentDataset?.key).map((dataset) => [dataset.key, dataset])).values()];
+  unique.forEach((dataset) => {
     const item = document.createElement("li");
     const link = document.createElement("a");
     link.href = dataset.sourceUrl;
@@ -98,7 +98,9 @@ function renderCatalogResults(datasets, total, start = 0) {
       inspectUrl(dataset.sourceUrl);
     });
     const details = document.createElement("span");
-    details.textContent = ` — ${dataset.description || "No description supplied."}`;
+    const evidence = currentDataset ? explainRelatedDataset(currentDataset, dataset) : { evidence: [] };
+    const evidenceText = evidence.evidence.map((item) => `${item.label}: ${item.value}`).join("; ");
+    details.textContent = ` — ${dataset.description || "No description supplied."} Evidence: ${evidenceText || "catalog match; review metadata"}. Publisher: ${dataset.publisher || "Not supplied"}. Themes: ${(dataset.themes || []).join(", ") || "Not supplied"}. Geography: ${dataset.spatial || "Not supplied"}. Time: ${dataset.temporal || "Not supplied"}. Source: ${dataset.sourceUrl}`;
     const save = document.createElement("button");
     save.type = "button";
     save.className = "button-secondary compact-button";
@@ -112,25 +114,26 @@ function renderCatalogResults(datasets, total, start = 0) {
     list.append(item);
   });
   elements["catalog-results"].append(heading, list);
-  if (start + datasets.length < total) {
+  if (start + unique.length < total) {
     const next = document.createElement("button");
     next.type = "button";
     next.className = "button-secondary";
     next.textContent = "Load next catalog page";
-    next.addEventListener("click", () => searchCatalog(start + datasets.length));
+    next.addEventListener("click", () => searchCatalog(start + unique.length));
     elements["catalog-results"].append(next);
   }
 }
 
 async function searchCatalog(start = 0) {
   const catalogUrl = elements["catalog-url"].value.trim() || currentDataset?.catalogUrl;
-  const query = elements["catalog-query"].value.trim();
+  const query = elements["catalog-query"].value.trim() || catalogSearchTerms(currentDataset || { title: "public data" });
   if (!catalogUrl || !query) {
     setStatus("Enter a data catalog URL and search terms, or open a catalog dataset first.", "error");
     return;
   }
   try {
-    const result = await searchCkanCatalogPage(catalogUrl, query, { start, rows: 20 });
+    const search = currentDataset?.connectorId === "dkan" ? searchDkanCatalogPage : searchCkanCatalogPage;
+    const result = await search(catalogUrl, query, { start, rows: 20 });
     renderCatalogResults(result.datasets, result.total, result.start);
     setStatus(`Found ${result.total} catalog matches.`);
   } catch (error) {
@@ -201,6 +204,7 @@ function selectedResource() {
 function renderDataset(dataset) {
   currentDataset = dataset;
   currentFields = dataset.fields || [];
+  if (dataset.catalogUrl) elements["catalog-url"].value = dataset.catalogUrl;
   elements["dataset-section"].hidden = false;
   elements["explore-section"].hidden = true;
   elements["question-section"].hidden = true;
@@ -307,7 +311,8 @@ function renderProfile(profile) {
   const qualityHeading = document.createElement("h3");
   qualityHeading.textContent = "Data quality before analysis";
   const qualityNote = document.createElement("p");
-  qualityNote.textContent = `The resource contains ${profile.quality?.rowCount ?? "an unknown number of"} rows. Empty values and configured textual sentinels (None, NULL, null, N/A, and NA) are treated as missing for calculations. Original source values remain available from the publisher URL.`;
+  const parseNote = profile.quality?.parseFailures?.length ? ` ${profile.quality.parseFailures.length} malformed row(s) were reported and excluded from the typed projection; inspect the source before relying on totals.` : " No malformed rows were found in the profiled CSV text.";
+  qualityNote.textContent = `The resource contains ${profile.quality?.rowCount ?? "an unknown number of"} rows. Empty values and configured textual sentinels (None, NULL, null, N/A, NA, and Not supplied) are treated as missing for calculations.${parseNote} Raw CSV values remain queryable in the dataset_raw view.`;
   const qualityRows = currentFields.map((field) => ({
     field: field.name,
     semantic_role: field.semanticRole || "Not inferred",
@@ -392,6 +397,7 @@ elements["plan-form"].addEventListener("submit", async (event) => {
     aggregation: elements.aggregation.value,
     measure: elements.measure.value,
     dimension: elements.dimension.value,
+    timeField: currentFields.find((field) => field.name === elements.dimension.value && /DATE|TIME|TIMESTAMP/i.test(field.type || ""))?.name || "",
   };
   try {
     const sql = compilePlan(plan, currentFields);
@@ -403,7 +409,7 @@ elements["plan-form"].addEventListener("submit", async (event) => {
       : `Calculated ${plan.aggregation} across all loaded rows. The table contains all ${rows.length} returned result row(s), within the limit of ${plan.limit || 100}.`;
     elements["story-text"].textContent = resultStory(rows, plan);
     renderTable(elements["result-table"], rows, `Result for: ${elements.question.value}`);
-    await renderChart(elements.chart, rows, plan);
+    await renderChart(elements.chart, rows, plan, currentFields);
     elements["sql-output"].textContent = sql;
     metadataList(elements.provenance, [
       ["Dataset", currentDataset.title],

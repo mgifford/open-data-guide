@@ -1,6 +1,7 @@
 const AGGREGATIONS = new Set(["count", "distinct_count", "sum", "avg", "median", "min", "max"]);
 const FILTER_OPERATORS = new Set(["equals", "not_equals", "greater_than", "greater_or_equal", "less_than", "less_or_equal"]);
 const GEOGRAPHIC_CODE_ROLES = new Set(["postal-code", "zip-code", "zip-plus-four", "zcta", "fips"]);
+const TEMPORAL_TYPES = /DATE|TIME|TIMESTAMP/i;
 
 export function quoteIdentifier(value) {
   return `"${String(value).replaceAll('"', '""')}"`;
@@ -17,6 +18,7 @@ export function validatePlan(plan, fields) {
   if (!AGGREGATIONS.has(plan.aggregation)) throw new Error("Unsupported calculation.");
   if (plan.version && plan.version !== 1) throw new Error("Unsupported query-plan version.");
   if (plan.dimension && !names.has(plan.dimension)) throw new Error("The grouping field is not in this dataset.");
+  if (plan.timeField && !names.has(plan.timeField)) throw new Error("The time field is not in this dataset.");
   if (!["count"].includes(plan.aggregation) && !names.has(plan.measure)) throw new Error("Choose a measure field for this calculation.");
   if (plan.aggregation === "distinct_count" && !plan.measure) throw new Error("Choose a field for the distinct count.");
   const measureField = fields.find((field) => field.name === plan.measure);
@@ -69,7 +71,18 @@ function mentionedField(question, fields) {
 
 export function interpretQuestion(question, fields) {
   const lower = normalized(question);
-  if (/\b(how did|why|cause|caused|impact|effect)\b/.test(lower)) {
+  const dateFields = fields.filter((field) => TEMPORAL_TYPES.test(field.type) || /(date|time|timestamp|year)/i.test(field.name));
+  const asksChange = /\b(change|changed|trend|over time|through time|increased|decreased)\b/.test(lower);
+  if (asksChange && dateFields.length > 1 && !dateFields.some((field) => lower.includes(normalized(field.name)))) {
+    return {
+      version: 1, status: "needs-clarification", question,
+      clarification: {
+        message: "Which date field should define time? The choice can change the result.",
+        choices: dateFields.map((field) => field.name),
+      }, aggregation: "count", measure: "", dimension: "", timeField: "",
+    };
+  }
+  if (/\b(why|cause|caused|impact|effect)\b/.test(lower) || (/\bhow did\b/.test(lower) && (!asksChange || dateFields.length === 0))) {
     return {
       version: 1,
       status: "needs-clarification",
@@ -93,5 +106,6 @@ export function interpretQuestion(question, fields) {
   const dimension = byMatch ? mentionedField(byMatch[1], fields) : "";
   const measureQuestion = byMatch ? lower.slice(0, byMatch.index) : lower;
   const measure = aggregation === "count" ? "" : mentionedField(measureQuestion, fields);
-  return { version: 1, status: "ready", question, aggregation, measure, dimension, filters: [], limit: 100 };
+  const namedTimeField = dateFields.find((field) => lower.includes(normalized(field.name)))?.name || (asksChange && dateFields.length === 1 ? dateFields[0].name : "");
+  return { version: 1, status: "ready", question, aggregation, measure, dimension, timeField: namedTimeField, filters: [], limit: 100, assumptions: namedTimeField && asksChange ? [`Using ${namedTimeField} as the time field; review this choice.`] : [] };
 }

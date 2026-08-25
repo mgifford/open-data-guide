@@ -6,11 +6,18 @@ export function chartRowsFor(rows, limit = CHART_DISPLAY_LIMIT) {
   return rows.slice(0, limit);
 }
 
-export async function renderChart(container, rows, plan) {
+export function chartKindFor(plan, fields = []) {
+  const dimension = fields.find((field) => field.name === plan.dimension);
+  const isTemporal = plan.timeField === plan.dimension || /DATE|TIME|TIMESTAMP/i.test(dimension?.type || "") || dimension?.semanticRole === "time";
+  if (isTemporal && plan.timeField === plan.dimension) return "line";
+  return "bar";
+}
+
+export async function renderChart(container, rows, plan, fields = []) {
   container.replaceChildren();
   if (!rows.length || !plan.dimension) return;
-  const fieldType = rows.some((row) => Number.isNaN(Number(row.category))) ? "nominal" : "quantitative";
-  const mark = fieldType === "nominal" ? "bar" : "line";
+  const mark = chartKindFor(plan, fields);
+  const fieldType = mark === "line" ? "temporal" : "nominal";
   const chartRows = chartRowsFor(rows);
   const largest = [...rows].sort((a, b) => Number(b.value) - Number(a.value))[0];
   const description = document.createElement("p");
@@ -26,7 +33,7 @@ export async function renderChart(container, rows, plan) {
       x: { field: "category", type: fieldType, title: plan.dimension, sort: mark === "bar" ? "-y" : undefined },
       y: { field: "value", type: "quantitative", title: plan.aggregation },
     },
-    width: "container",
+    width: 600,
     height: 320,
     config: { view: { stroke: null } },
   };

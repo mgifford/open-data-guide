@@ -56,6 +56,7 @@ export function parseDelimited(text, delimiter = detectDelimiter(text)) {
 export function normalizeRows(text, delimiter = detectDelimiter(text)) {
   const parsed = parseDelimited(text, delimiter);
   const headers = parsed.shift() || [];
+  const parseFailures = parsed.flatMap((row, index) => row.length === headers.length ? [] : [{ rowNumber: index + 2, expectedFields: headers.length, actualFields: row.length }]);
   const rawRows = parsed.filter((row) => row.length === headers.length).map((row) => Object.fromEntries(headers.map((header, index) => [header, row[index]])));
   const sentinelCounts = Object.fromEntries(headers.map((header) => [header, 0]));
   const normalizedRows = rawRows.map((row) => Object.fromEntries(headers.map((header) => {
@@ -66,7 +67,7 @@ export function normalizeRows(text, delimiter = detectDelimiter(text)) {
     }
     return [header, normalizeGeographicValue(value, detectSemanticRole(header)).normalizedValue];
   })));
-  return { headers, rawRows, normalizedRows, sentinelCounts, delimiter };
+  return { headers, rawRows, normalizedRows, sentinelCounts, delimiter, parseFailures };
 }
 
 function numberValue(value) {
