@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { catalogSearchTerms, cosineSimilarity, explainRelatedDataset, relatedDatasets } from "../src/catalog/related.js";
-import { analyzeJoinCandidate } from "../src/catalog/relationships.js";
+import { analyzeJoinCandidate, validateJoinCandidate } from "../src/catalog/relationships.js";
 import { chartKindFor, chartRowsFor } from "../src/render/chart.js";
 
 describe("related dataset matching", () => {
@@ -48,6 +48,26 @@ describe("related dataset matching", () => {
     expect(evidence.expectedCardinality).toBe("needs-review");
     expect(evidence.requiresUserConfirmation).toBe(true);
     expect(evidence.reasons).toContain("1 normalized key values overlap");
+  });
+
+  it("blocks many-to-many joins even when confirmation is requested", () => {
+    const evidence = analyzeJoinCandidate(
+      { fields: [{ name: "key", type: "VARCHAR" }], rows: [{ key: "a" }, { key: "a" }] },
+      { fields: [{ name: "key", type: "VARCHAR" }], rows: [{ key: "a" }, { key: "a" }] },
+      "key", "key",
+    );
+    expect(evidence.expectedCardinality).toBe("many-to-many-risk");
+    expect(() => validateJoinCandidate(evidence, { confirmed: true })).toThrow(/Many-to-many/);
+  });
+
+  it("requires confirmation for non-many-to-many joins", () => {
+    const evidence = analyzeJoinCandidate(
+      { fields: [{ name: "key", type: "VARCHAR" }], rows: [{ key: "a" }, { key: "b" }] },
+      { fields: [{ name: "key", type: "VARCHAR" }], rows: [{ key: "a" }, { key: "b" }] },
+      "key", "key",
+    );
+    expect(() => validateJoinCandidate(evidence)).toThrow(/confirmation/);
+    expect(validateJoinCandidate(evidence, { confirmed: true })).toBe(true);
   });
 
   it("limits dense chart display while retaining the full result list", () => {

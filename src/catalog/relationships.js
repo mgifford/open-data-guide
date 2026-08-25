@@ -51,3 +51,10 @@ export function analyzeJoinCandidate(source, target, sourceField, targetField) {
     requiresUserConfirmation: true,
   };
 }
+
+export function validateJoinCandidate(evidence, { confirmed = false } = {}) {
+  if (!evidence?.compatibleTypes) throw new Error("Join keys have incompatible types.");
+  if (evidence.expectedCardinality === "many-to-many-risk") throw new Error("Many-to-many joins are blocked because they can multiply rows.");
+  if (!confirmed) throw new Error("Join requires explicit user confirmation after reviewing key evidence.");
+  return true;
+}

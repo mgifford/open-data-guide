@@ -28,6 +28,9 @@ function normalizeResource(resource, index = 0) {
     format,
     mediaType: valueOf(resource.mediaType || resource.mimetype),
     dataDictionaryUrl: valueOf(resource.describedBy),
+    datastoreActive: resource.datastore_active === true || resource.datastoreActive === true,
+    datastoreId: valueOf(resource.id || resource.identifier),
+    sizeBytes: Number(resource.size || resource.size_bytes || 0) || null,
   };
 }
 

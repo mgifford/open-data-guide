@@ -4,8 +4,9 @@ import ehModule from "@duckdb/duckdb-wasm/dist/duckdb-eh.wasm?url";
 import mvpWorker from "@duckdb/duckdb-wasm/dist/duckdb-browser-mvp.worker.js?url";
 import ehWorker from "@duckdb/duckdb-wasm/dist/duckdb-browser-eh.worker.js?url";
 import { detectSemanticRole } from "./geography.js";
-import { decodeUtf8, profileRows } from "./ingestion.js";
+import { abortCheckForResourceLoading, decodeUtf8, profileRows } from "./ingestion.js";
 import { digestText } from "../catalog/history.js";
+import { datastoreResource, queryDataStore } from "./datastore.js";
 
 const BUNDLES = {
   mvp: { mainModule: mvpModule, mainWorker: mvpWorker },
@@ -67,15 +68,29 @@ function normalizedSourceExpression(field) {
   return `${source}`;
 }
 
-export async function loadResource(resource) {
+export async function loadResource(resource, options = {}) {
+  if (datastoreResource(resource)) {
+    const result = await queryDataStore(resource, {}, { signal: options.signal, limit: 20 });
+    const fields = result.fields.map((field) => ({ name: field.id, type: field.type || "VARCHAR", nullable: true, semanticRole: detectSemanticRole(field.id), inferredType: /INT|DOUBLE|DECIMAL|NUMERIC|FLOAT/i.test(field.type || "") ? "number" : /DATE|TIME/i.test(field.type || "") ? "date" : "text" }));
+    fields.forEach((field) => {
+      const values = result.rows.map((row) => row[field.name]).filter((value) => value !== null && value !== undefined && value !== "");
+      field.nullCount = result.rows.length - values.length;
+      field.distinctCount = new Set(values.map(String)).size;
+    });
+    return { fields, preview: result.rows, filename: "", sourceDigest: "", quality: { rowCount: result.total, rawValuesRetained: false, remote: true, parseFailures: [] } };
+  }
   const db = await database();
   if (!connection) connection = await db.connect();
   const filename = `dataset-${crypto.randomUUID()}.${resource.format}`;
   let sourceProfile = null;
   if (resource.format === "csv") {
-    const response = await fetch(resource.url);
+    const response = await fetch(resource.url, { signal: options.signal });
     if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
-    const text = decodeUtf8(new Uint8Array(await response.arrayBuffer()));
+    abortCheckForResourceLoading(response.headers.get("content-length"));
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (options.signal?.aborted) throw new DOMException("The resource load was cancelled.", "AbortError");
+    abortCheckForResourceLoading(bytes.byteLength);
+    const text = decodeUtf8(bytes);
     sourceProfile = profileRows(text);
     sourceProfile.sourceDigest = await digestText(text);
     await db.registerFileText(`${filename}.raw`, text);

@@ -28,3 +28,9 @@ The provider boundary and deterministic fallback are complete. Browser-managed d
 - Bound high-cardinality charts with aggregation-aware `Other` handling while preserving the full result table.
 - Show dataset field roles, missingness ratios, and date ranges in the Data Schematic.
 - Export complete results as CSV or JSON, including plan, SQL, provenance, and the Vega-Lite specification when a chart is rendered.
+
+## Phase 7: Large sources and safe multi-dataset analysis
+
+- Use documented CKAN DataStore requests when they avoid large file downloads.
+- Keep transfer, memory, pagination, cancellation, and refusal limits visible and reproducible.
+- Verify join keys, types, uniqueness, null rates, cardinality, geography, and time grain before any confirmed comparison.

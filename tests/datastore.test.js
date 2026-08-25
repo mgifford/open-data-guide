@@ -1,0 +1,51 @@
+import { describe, expect, it, vi } from "vitest";
+import { datastoreRequest, datastoreResource, queryDataStore, runDataStorePlan } from "../src/data/datastore.js";
+
+describe("CKAN DataStore adapter", () => {
+  const resource = { datastoreActive: true, datastoreId: "resource-1", url: "https://catalog.example.gov/download/data.csv" };
+
+  it("builds bounded, parameterized DataStore requests", () => {
+    expect(datastoreResource(resource)).toBe(true);
+    const request = datastoreRequest(resource, { dimension: "county", measure: "amount", filters: [{ field: "state", operator: "equals", value: "CA" }] }, 20, 500);
+    expect(request.pathname).toBe("/api/3/action/datastore_search");
+    expect(request.searchParams.get("resource_id")).toBe("resource-1");
+    expect(request.searchParams.get("fields")).toBe("county,amount");
+    expect(request.searchParams.get("limit")).toBe("500");
+    expect(request.searchParams.get("filters")).toContain("CA");
+    expect(request.searchParams.get("filters")).not.toContain("SELECT");
+  });
+
+  it("rejects non-exact filters instead of emitting remote SQL", () => {
+    expect(() => datastoreRequest(resource, { filters: [{ field: "amount", operator: "greater_than", value: 10 }] })).toThrow(/exact-match/);
+  });
+
+  it("returns normalized records and forwards cancellation", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ success: true, result: { records: [{ county: "Alameda" }], total: 1, fields: [{ id: "county" }] } })));
+    const signal = AbortSignal.timeout(1000);
+    await expect(queryDataStore(resource, {}, { signal })).resolves.toMatchObject({ rows: [{ county: "Alameda" }], total: 1 });
+    expect(fetchMock.mock.calls[0][1].signal).toBe(signal);
+    fetchMock.mockRestore();
+  });
+
+  it("rejects resources without DataStore support", () => {
+    expect(() => datastoreRequest({ url: "https://example.gov/data.csv" })).toThrow(/DataStore/);
+  });
+
+  it("paginates and aggregates a controlled DataStore fixture", async () => {
+    let calls = 0;
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      calls += 1;
+      const records = [{ county: "Alameda", amount: 10 }, { county: "Alameda", amount: 5 }, { county: "Butte", amount: 7 }];
+      return new Response(JSON.stringify({ success: true, result: { records, total: 3, fields: [] } }));
+    });
+    await expect(runDataStorePlan(resource, { aggregation: "sum", measure: "amount", dimension: "county", limit: 10 })).resolves.toMatchObject({ rows: [{ category: "Alameda", value: 15 }, { category: "Butte", value: 7 }], scanned: 3, truncated: false });
+    expect(calls).toBe(1);
+    fetchMock.mockRestore();
+  });
+
+  it("stops before a remote request when cancelled", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    await expect(runDataStorePlan(resource, {}, { signal: controller.signal })).rejects.toThrow(/cancelled/);
+  });
+});

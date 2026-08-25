@@ -127,3 +127,8 @@ export function formatDisplayValue(value, fieldName = "") {
 export function shouldRefuseResource(bytes, limit = MAX_BROWSER_RESOURCE_BYTES) {
   return Number.isFinite(Number(bytes)) && Number(bytes) > limit;
 }
+export function abortCheckForResourceLoading(bytes) {
+  if (shouldRefuseResource(bytes)) {
+    throw new Error("Resource loading aborted due to exceeding the transfer budget.");
+  }
+}

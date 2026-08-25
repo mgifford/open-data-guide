@@ -14,6 +14,7 @@ import { renderSchematic } from "./render/schematic.js";
 import { describeResult } from "./render/advisor.js";
 import { downloadText, resultsToCsv, resultsToJson } from "./render/export.js";
 import { shouldRefuseResource } from "./data/ingestion.js";
+import { datastoreResource, runDataStorePlan } from "./data/datastore.js";
 
 const elements = Object.fromEntries([
   "dataset-form", "dataset-url", "sample-button", "status", "dataset-section", "dataset-heading",
@@ -587,8 +588,10 @@ elements["plan-form"].addEventListener("submit", async (event) => {
   activePlan = plan;
   try {
     const sql = compilePlan(plan, currentFields);
-    setStatus("Running the validated query in DuckDB-Wasm...");
-    const rows = await runQuery(sql);
+    setStatus(datastoreResource(currentResource) ? "Running the validated query through the CKAN DataStore..." : "Running the validated query in DuckDB-Wasm...");
+    const remote = datastoreResource(currentResource);
+    const result = remote ? await runDataStorePlan(currentResource, plan) : { rows: await runQuery(sql), total: null, scanned: null, truncated: false };
+    const rows = result.rows;
     currentResult = { rows, plan, sql, vegaLiteSpec: null };
     elements["query-output"].hidden = false;
     renderSchematic(elements["schematic-view"], currentFields, currentQualities, currentResource);
@@ -596,7 +599,7 @@ elements["plan-form"].addEventListener("submit", async (event) => {
     elements["story-text"].textContent = resultStory(rows, plan);
     renderTable(elements["result-table"], rows, `Result for: ${elements.question.value}`);
     currentResult.vegaLiteSpec = await renderChart(elements.chart, rows, plan, currentFields);
-    elements["sql-output"].textContent = sql;
+    elements["sql-output"].textContent = remote ? `CKAN DataStore request for resource ${currentResource.id}; filters, projections, pagination, and aggregation were executed through the documented API.` : sql;
     metadataList(elements.provenance, [
       ["Dataset", currentDataset.title],
       ["Resource", currentResource.title],
@@ -640,7 +643,7 @@ elements["plan-form"].addEventListener("submit", async (event) => {
     });
     await refreshHistory();
     await refreshStorageSummary();
-    setStatus("Query complete. Review the table, chart, and SQL.");
+    setStatus(datastoreResource(currentResource) ? "Query complete. Review the table and the documented DataStore request." : "Query complete. Review the table, chart, and SQL.");
   } catch (error) {
     setStatus(error.message, "error");
   }

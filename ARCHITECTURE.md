@@ -48,6 +48,10 @@ WebGPU and WebNN indicate local compute capacity. They do not indicate that a mo
 
 Semantic matching is opt-in and local. It may compare the current dataset with saved markers, fetched catalog candidates, and historical query signals. Deterministic catalog scoring and relationship evidence remain visible; semantic similarity never grants comparison or join compatibility.
 
+## Phase 7 large sources and joins
+
+CKAN DataStore-enabled resources use bounded `datastore_search` requests for selected fields, exact filters, sorting, and pagination. The adapter never accepts arbitrary remote SQL. Direct file loads remain behind a browser transfer budget. Join evidence is deterministic, many-to-many candidates are blocked, and all other joins require explicit confirmation.
+
 ## Next technical slices
 
 1. Store typed relationships such as `same_series`, `replaces`, `documents`, and `join_candidate`.

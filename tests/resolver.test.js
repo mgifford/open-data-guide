@@ -73,4 +73,9 @@ describe("dataset adapters", () => {
     const result = await searchDkanCatalogPage("https://catalog.example.gov", "water", { rows: 10 });
     expect(result.datasets[0]).toMatchObject({ connectorId: "dkan", title: "Water", platform: "DKAN" });
   });
+
+  it("preserves CKAN DataStore capability metadata", () => {
+    const dataset = normalizeCkan({ id: "store", resources: [{ id: "r1", format: "CSV", url: "https://example.gov/r.csv", datastore_active: true, size: 1234 }] }, "https://catalog.example.gov/dataset/store");
+    expect(dataset.resources[0]).toMatchObject({ datastoreActive: true, datastoreId: "r1", sizeBytes: 1234 });
+  });
 });
