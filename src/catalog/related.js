@@ -2,9 +2,25 @@ const STOP_WORDS = new Set(["and", "the", "for", "from", "with", "data", "datase
 
 export function tokensFor(dataset) {
   const fields = (dataset.fields || []).map((field) => `${field.name || ""} ${field.description || ""}`).join(" ");
-  return new Set(`${dataset.title || ""} ${dataset.description || ""} ${dataset.publisher || ""} ${fields}`
+  return new Set(`${dataset.title || ""} ${dataset.description || ""} ${fields}`
     .toLowerCase().replace(/[^a-z0-9]+/g, " ").split(/\s+/)
     .filter((token) => token.length > 2 && !STOP_WORDS.has(token)));
+}
+
+export function catalogSearchTerms(dataset, limit = 6) {
+  return [...new Set([
+    ...tokensFor(dataset),
+    ...(dataset.keywords || []).flatMap((keyword) => [...tokensFor({ title: keyword })]),
+    ...(dataset.themes || []).flatMap((theme) => [...tokensFor({ title: theme })]),
+  ])].slice(0, limit).join(" ");
+}
+
+function fieldCategory(field) {
+  if (["postal-code", "zip-code", "zip-plus-four", "zcta", "fips", "latitude", "longitude"].includes(field.semanticRole)) return "geography";
+  if (field.semanticRole === "time" || /DATE|TIME|TIMESTAMP/i.test(field.type || "") || /(date|time|year)/i.test(field.name || "")) return "time";
+  if (/INT|DECIMAL|DOUBLE|FLOAT|REAL|NUMERIC|HUGEINT/i.test(field.type || "")) return "measure";
+  if (field.likelyIdentifier || /(^|[_ -])(id|identifier|key|uuid)($|[_ -])/i.test(field.name || "")) return "identifier";
+  return "category";
 }
 
 function valuesFor(dataset, key) {
@@ -47,11 +63,12 @@ export function explainRelatedDataset(current, candidate) {
     reasons.push("similar subject wording");
     evidence.push({ type: "subject", label: "shared subject terms", value: sharedTerms.slice(0, 8).join(", ") });
   }
-  const currentFields = new Set((current.fields || []).map((field) => String(field.name).toLowerCase()));
-  const sharedFields = (candidate.fields || []).map((field) => field.name).filter((name) => currentFields.has(String(name).toLowerCase()));
+  const currentFields = new Map((current.fields || []).map((field) => [String(field.name).toLowerCase(), field]));
+  const sharedFields = (candidate.fields || []).filter((field) => currentFields.has(String(field.name).toLowerCase()));
   if (sharedFields.length) {
     reasons.push("shared field names");
-    evidence.push({ type: "measure", label: "shared field names", value: sharedFields.slice(0, 8).join(", ") });
+    const categories = [...new Set(sharedFields.map(fieldCategory))];
+    evidence.push({ type: categories.includes("geography") ? "geography" : categories.includes("time") ? "temporal" : categories.includes("measure") ? "measure" : categories.includes("identifier") ? "identifier" : "category", label: "shared field names", value: sharedFields.slice(0, 8).map((field) => `${field.name} (${fieldCategory(field)})`).join(", ") });
   }
   if (/\bzcta\b|\bcensus\b|\bacs\b/i.test(`${candidate.title} ${candidate.description} ${(candidate.keywords || []).join(" ")}`)) {
     reasons.push("Census geography requires review");

@@ -64,7 +64,7 @@ th { background: var(--background); }
 .plan-form legend { padding-inline: .4rem; }
 .plan-form button { align-self: end; }
 pre { white-space: pre-wrap; word-break: break-word; background: var(--background); padding: 1rem; border-radius: .4rem; }
-.chart { min-height: 8rem; margin-block: 1rem; }
+.chart { min-height: 8rem; max-width: 100%; overflow-x: auto; margin-block: 1rem; }
 .story { border-left: .3rem solid var(--accent); padding: .8rem 1rem; background: var(--accent-soft); margin-block: 1rem; }
 .story h4 { margin: 0; }
 .story p { margin-bottom: 0; }

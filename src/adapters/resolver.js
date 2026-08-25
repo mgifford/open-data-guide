@@ -217,6 +217,21 @@ export async function searchCkanCatalogPage(catalogUrl, query, options = {}) {
   };
 }
 
+export async function searchDkanCatalogPage(catalogUrl, query, options = {}) {
+  const base = new URL(catalogUrl);
+  const endpoint = new URL("/api/1/metastore/schemas/dataset/items", base.origin);
+  endpoint.searchParams.set("fulltext", query);
+  endpoint.searchParams.set("page", String(Math.floor((Number(options.start) || 0) / (Number(options.rows) || 20)) + 1));
+  endpoint.searchParams.set("page-size", String(Math.min(Math.max(Number(options.rows) || 20, 1), 100)));
+  const response = await fetchJson(endpoint.href);
+  const items = Array.isArray(response) ? response : response.items || response.data || [];
+  return {
+    datasets: items.map((item) => normalizeDkan(item, `${base.origin}/dataset/${item.identifier || item.id || "unknown"}`)),
+    total: Number(response.total || response.count || items.length),
+    start: Number(options.start) || 0,
+  };
+}
+
 export async function loadDataDictionary(resource) {
   if (!resource.dataDictionaryUrl) return [];
   try {

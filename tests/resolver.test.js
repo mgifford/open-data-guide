@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { connectorFor, inferFormat, normalizeCkan, normalizeDcat, normalizeDkan, searchCkanCatalogPage } from "../src/adapters/resolver.js";
+import { connectorFor, inferFormat, normalizeCkan, normalizeDcat, normalizeDkan, searchCkanCatalogPage, searchDkanCatalogPage } from "../src/adapters/resolver.js";
 
 describe("dataset adapters", () => {
   it("infers supported formats without trusting query parameters", () => {
@@ -66,5 +66,11 @@ describe("dataset adapters", () => {
     expect(dataset.keywords).toEqual([]);
     expect(dataset.themes).toEqual([]);
     expect(dataset.resources).toEqual([]);
+  });
+
+  it("keeps DKAN search behind the same normalized catalog result shape", async () => {
+    globalThis.fetch = async () => new Response(JSON.stringify({ total: 1, items: [{ identifier: "water", title: "Water", distribution: [] }] }), { status: 200 });
+    const result = await searchDkanCatalogPage("https://catalog.example.gov", "water", { rows: 10 });
+    expect(result.datasets[0]).toMatchObject({ connectorId: "dkan", title: "Water", platform: "DKAN" });
   });
 });

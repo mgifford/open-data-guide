@@ -59,4 +59,22 @@ describe("constrained query plans", () => {
     expect(() => compilePlan({ aggregation: "avg", measure: "state", dimension: "" }, [{ name: "state", type: "VARCHAR", semanticRole: "zip-code" }])).toThrow(/labels/);
     expect(() => compilePlan({ aggregation: "distinct_count", measure: "state", dimension: "" }, [{ name: "state", type: "VARCHAR", semanticRole: "zip-code" }])).not.toThrow();
   });
+
+  it("requires a date choice when change questions have multiple date fields", () => {
+    const result = interpretQuestion("How have dry well reports changed over time?", [
+      { name: "Report Date", type: "DATE" },
+      { name: "Create Date", type: "DATE" },
+    ]);
+    expect(result.status).toBe("needs-clarification");
+    expect(result.clarification.choices).toEqual(["Report Date", "Create Date"]);
+  });
+
+  it("proposes the only date field without silently hiding the choice", () => {
+    const result = interpretQuestion("How did storage change over time?", [
+      { name: "Observation Date", type: "DATE" },
+      { name: "Storage", type: "DOUBLE" },
+    ]);
+    expect(result.timeField).toBe("Observation Date");
+    expect(result.assumptions[0]).toMatch(/review/);
+  });
 });

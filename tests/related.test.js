@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { cosineSimilarity, explainRelatedDataset, relatedDatasets } from "../src/catalog/related.js";
+import { catalogSearchTerms, cosineSimilarity, explainRelatedDataset, relatedDatasets } from "../src/catalog/related.js";
 import { analyzeJoinCandidate } from "../src/catalog/relationships.js";
-import { chartRowsFor } from "../src/render/chart.js";
+import { chartKindFor, chartRowsFor } from "../src/render/chart.js";
 
 describe("related dataset matching", () => {
   it("reports transparent shared terms", () => {
@@ -26,6 +26,13 @@ describe("related dataset matching", () => {
     expect(result.joinCandidate).toBe(false);
   });
 
+  it("derives bounded catalog terms without using publisher as a subject term", () => {
+    const terms = catalogSearchTerms({ title: "Groundwater levels", publisher: "Secret publisher", keywords: ["aquifer"] }, 4);
+    expect(terms).toContain("groundwater");
+    expect(terms).not.toContain("secret");
+    expect(terms.split(" ").length).toBeLessThanOrEqual(4);
+  });
+
   it("calculates cosine similarity", () => {
     expect(cosineSimilarity([1, 0], [1, 0])).toBe(1);
     expect(cosineSimilarity([1, 0], [0, 1])).toBe(0);
@@ -47,5 +54,11 @@ describe("related dataset matching", () => {
     const rows = Array.from({ length: 80 }, (_, index) => ({ category: `Project ${index}`, value: index }));
     expect(chartRowsFor(rows)).toHaveLength(15);
     expect(rows).toHaveLength(80);
+  });
+
+  it("selects line charts only for explicit temporal dimensions", () => {
+    expect(chartKindFor({ dimension: "date", timeField: "date" }, [{ name: "date", type: "DATE" }])).toBe("line");
+    expect(chartKindFor({ dimension: "ZIP", timeField: "" }, [{ name: "ZIP", type: "VARCHAR", semanticRole: "zip-code" }])).toBe("bar");
+    expect(chartKindFor({ dimension: "identifier", timeField: "" }, [{ name: "identifier", type: "DOUBLE", likelyIdentifier: true }])).toBe("bar");
   });
 });
