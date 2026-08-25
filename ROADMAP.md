@@ -20,4 +20,4 @@ Implement the registered-source approval workflow only after the local research 
 
 ## Phase 4B: Capability-driven browser planning
 
-The provider boundary and deterministic fallback are implemented. Next: manual Chrome/Edge capability verification, explicit downloadable/downloading/cancelled UI states, broader response-constraint compatibility handling, and the 40-case plan evaluation set. No provider may calculate values or emit executable SQL/JavaScript.
+The provider boundary and deterministic fallback are complete. Browser-managed downloadable/downloading/cancelled states, response-constraint compatibility fallback, and the executable 40-case plan evaluation are covered. Manual Chrome/Edge capability verification remains environment-specific. No provider may calculate values or emit executable SQL/JavaScript.

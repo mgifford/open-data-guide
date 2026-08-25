@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { compilePlan, interpretQuestion, quoteIdentifier, quoteLiteral } from "../src/query/plan.js";
 import evaluationCases from "./query-planning-evaluation.json";
+import { evaluatePlanningCases } from "../src/ai/evaluation.js";
 
 const fields = [
   { name: "state", type: "VARCHAR" },
@@ -79,8 +80,13 @@ describe("constrained query plans", () => {
     expect(result.assumptions[0]).toMatch(/review/);
   });
 
-  it("contains the required bounded planning evaluation set", () => {
+  it("executes the bounded planning evaluation set", async () => {
     expect(evaluationCases).toHaveLength(40);
     expect(new Set(evaluationCases.map((item) => item.kind))).toEqual(new Set(["ready", "clarification", "rejection"]));
+    const results = await evaluatePlanningCases(evaluationCases, [
+      { name: "state", type: "VARCHAR" }, { name: "amount_usd", type: "DOUBLE" }, { name: "payment_date", type: "DATE" },
+      { name: "ZIP", type: "VARCHAR", semanticRole: "zip-code" }, { name: "FIPS", type: "VARCHAR", semanticRole: "fips" },
+    ]);
+    expect(results.every((result) => result.passed)).toBe(true);
   });
 });

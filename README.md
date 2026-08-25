@@ -37,7 +37,7 @@ npm run preview
 - Playwright Chromium acceptance coverage for the sample, CNRA fixtures, and postal/FIPS preservation.
 - Versioned local query history with source-digest staleness checks and a bounded geographic reference-data registry contract.
 - Workspace reload/export browser coverage and a patched Playwright test dependency with zero local npm audit findings.
-- Provider-independent browser AI planning with deterministic fallback and strict plan validation; browser model creation remains explicit and optional.
+- Provider-independent browser AI planning with deterministic fallback and strict plan validation; browser model creation and Hugging Face model downloads remain explicitly approved and optional, with no cloud inference.
 - Field and row previews.
 - A deliberately small natural-language interpreter for count, sum, average, minimum, and maximum questions.
 - Field validation before SQL generation.
@@ -56,7 +56,7 @@ npm run preview
 - Related means similar metadata or field language. It does not mean two datasets can safely be joined.
 - The sample data is synthetic and exists only to test the interface.
 - Optional semantic matching loads a pinned Transformers.js browser module from jsDelivr and model files from Hugging Face. The core application does not contact either service. A production deployment can self-host these files.
-- Browser capability detection checks `availability()` but does not call `create()`. A `downloadable` result is shown to the user without starting the browser-managed model download.
+- Browser capability detection checks `availability()` but does not call `create()`. A `downloadable` result is shown to the user without starting the browser-managed model download; preparation begins only after explicit approval and exposes progress, cancellation, and retry states.
 
 ## Why this is a new project
 

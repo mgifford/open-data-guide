@@ -17,7 +17,7 @@ const elements = Object.fromEntries([
   "dataset-description", "dataset-metadata", "platform-label", "resource-control", "size-warning",
   "load-resource-button", "save-button", "explore-section", "profile-summary", "fields-table",
   "preview-table", "quality-summary", "question-section", "question-form", "question", "question-interpret-button", "plan-form", "aggregation",
-  "measure", "dimension", "run-plan-button", "query-output", "result-explanation", "result-table", "chart", "sql-output",
+  "measure", "dimension", "run-plan-button", "plan-review", "query-output", "result-explanation", "result-table", "chart", "sql-output",
   "provenance", "saved-list", "related-list", "semantic-button", "capability-output",
   "catalog-form", "catalog-url", "catalog-query", "catalog-results", "history-search-form", "history-query", "history-list", "export-button",
   "import-input", "clear-data-button", "storage-summary", "story-text", "export-receipt", "clarification-output",
@@ -34,21 +34,44 @@ let pendingHistoryPlan = null;
 let catalogSeenKeys = new Set();
 let activePlannerProvenance = { modelBackend: "deterministic", modelIdentifier: "", modelVersion: "" };
 let plannerAbortController = null;
+let activePlan = null;
+let activePlanner = null;
+
+function resetPlannerProvenance() {
+  activePlannerProvenance = { modelBackend: "deterministic", modelIdentifier: "", modelVersion: "" };
+  activePlanner = null;
+}
+
+function renderPlanReview(plan) {
+  elements["plan-review"].replaceChildren();
+  const summary = document.createElement("p");
+  summary.textContent = `Plan: ${plan.aggregation}; measure: ${plan.measure || "row count"}; group: ${plan.dimension || "none"}; time field: ${plan.timeField || "none"}; limit: ${plan.limit}.`;
+  const detail = document.createElement("details");
+  const disclosure = document.createElement("summary");
+  disclosure.textContent = "Show filters, visualization, assumptions, and warnings";
+  const content = document.createElement("pre");
+  content.textContent = JSON.stringify({ filters: plan.filters || [], visualization: plan.visualization || { kind: "table" }, assumptions: plan.assumptions || [], warnings: plan.warnings || [] }, null, 2);
+  detail.append(disclosure, content);
+  elements["plan-review"].append(summary, detail);
+}
 
 function controlsPlan() {
-  return {
+  const plan = {
+    ...(activePlan || {}),
     version: 1,
     status: "ready",
     question: elements.question.value,
     aggregation: elements.aggregation.value,
     measure: elements.measure.value,
     dimension: elements.dimension.value,
-    timeField: currentFields.find((field) => field.name === elements.dimension.value && /DATE|TIME|TIMESTAMP/i.test(field.type || ""))?.name || "",
-    filters: [],
-    limit: 100,
-    assumptions: [],
-    visualization: { kind: elements.dimension.value ? "bar" : "table", x: elements.dimension.value || null, y: "value", series: null },
+    timeField: activePlan?.timeField || currentFields.find((field) => field.name === elements.dimension.value && /DATE|TIME|TIMESTAMP/i.test(field.type || ""))?.name || "",
+    filters: activePlan?.filters || [],
+    limit: activePlan?.limit || 100,
+    assumptions: activePlan?.assumptions || [],
+    warnings: activePlan?.warnings || [],
+    visualization: activePlan?.visualization || { kind: elements.dimension.value ? "bar" : "table", x: elements.dimension.value || null, y: "value", series: null },
   };
+  return plan;
 }
 
 function validateCurrentControls() {
@@ -296,6 +319,8 @@ function selectedResource() {
 
 function renderDataset(dataset) {
   currentDataset = dataset;
+  activePlan = null;
+  resetPlannerProvenance();
   currentFields = dataset.fields || [];
   if (dataset.catalogUrl) elements["catalog-url"].value = dataset.catalogUrl;
   elements["dataset-section"].hidden = false;
@@ -447,7 +472,12 @@ function renderProfile(profile) {
     }
     pendingHistoryPlan = null;
   }
-  [elements.aggregation, elements.measure, elements.dimension].forEach((control) => control.addEventListener("change", validateCurrentControls));
+  [elements.aggregation, elements.measure, elements.dimension].forEach((control) => control.addEventListener("change", () => {
+    activePlan = controlsPlan();
+    resetPlannerProvenance();
+    renderPlanReview(activePlan);
+    validateCurrentControls();
+  }));
 }
 
 async function inspectUrl(url) {
@@ -509,6 +539,8 @@ elements["load-resource-button"].addEventListener("click", async () => {
 elements["question-form"].addEventListener("submit", (event) => {
   event.preventDefault();
   const plan = interpretQuestion(elements.question.value, currentFields);
+  activePlan = plan;
+  resetPlannerProvenance();
   elements.aggregation.value = plan.aggregation;
   elements.measure.value = plan.measure;
   elements.dimension.value = plan.dimension;
@@ -523,6 +555,7 @@ elements["question-form"].addEventListener("submit", (event) => {
   } else if (/\bby\b/i.test(elements.question.value) && !plan.dimension) {
     setStatus("I could not match the requested grouping to a field. Choose it explicitly before running the query.");
   } else {
+    renderPlanReview(plan);
     setStatus("Review the interpreted calculation and fields, then run the verified query.");
   }
   validateCurrentControls();
@@ -531,6 +564,7 @@ elements["question-form"].addEventListener("submit", (event) => {
 elements["plan-form"].addEventListener("submit", async (event) => {
   event.preventDefault();
   const plan = controlsPlan();
+  activePlan = plan;
   try {
     const sql = compilePlan(plan, currentFields);
     setStatus("Running the validated query in DuckDB-Wasm...");
@@ -550,7 +584,7 @@ elements["plan-form"].addEventListener("submit", async (event) => {
       ["Fields used", [plan.dimension, plan.measure].filter(Boolean).join(", ") || "No named fields"],
       ["Rows returned", String(rows.length)],
       ["Planning backend", activePlannerProvenance.modelBackend],
-      ["Model identity", activePlannerProvenance.modelIdentifier || "Not disclosed by browser"],
+      ["Model identity", activePlannerProvenance.modelBackend === "deterministic" ? "Not applicable" : activePlannerProvenance.modelIdentifier || "Not disclosed by browser"],
       ["Calculated", new Date().toISOString()],
     ]);
     await putRecord("queries", {
@@ -798,6 +832,34 @@ function renderCapabilityReport(report, decision) {
     localNote.textContent = "Optional local model: about 500 MB, downloaded only after approval and kept in the browser-managed cache.";
     container.append(localNote);
   }
+  if (decision.queryPlanner === "browser-downloadable") {
+    const downloadButton = document.createElement("button");
+    downloadButton.type = "button";
+    downloadButton.textContent = "Approve browser-managed model download";
+    downloadButton.addEventListener("click", runBrowserModelPreparation);
+    container.append(downloadButton);
+  }
+}
+
+async function runBrowserModelPreparation() {
+  const controller = new AbortController();
+  const cancel = document.createElement("button");
+  cancel.type = "button";
+  cancel.className = "button-secondary";
+  cancel.textContent = "Cancel browser model download";
+  cancel.addEventListener("click", () => controller.abort());
+  elements["capability-output"].append(cancel);
+  setStatus("Preparing the browser-managed model after your approval...");
+  try {
+    const { createChromePromptProvider } = await import("./ai/providers.js");
+    const provider = createChromePromptProvider(window, { signal: controller.signal });
+    await provider.prepare((progress) => setStatus(`Browser-managed model download: ${Math.round(Number(progress) * 100)}%`));
+    setStatus("Browser-managed model is ready. Ask it for a constrained plan when you are ready.");
+  } catch (error) {
+    setStatus(`Browser-managed model preparation failed: ${error.message}. The deterministic planner remains available.`, "error");
+  } finally {
+    cancel.remove();
+  }
 }
 
 async function runBrowserPlanner() {
@@ -816,17 +878,22 @@ async function runBrowserPlanner() {
   try {
     const { createChromePromptProvider } = await import("./ai/providers.js");
     const provider = createChromePromptProvider(window, { signal: plannerAbortController.signal });
+    activePlanner = provider;
     const plan = await provider.plan({ question: elements.question.value, dataset: currentDataset, fields: currentFields });
     activePlannerProvenance = { modelBackend: provider.id, modelIdentifier: "browser-provided", modelVersion: "browser-managed" };
     elements.aggregation.value = plan.aggregation || "count";
     elements.measure.value = plan.measure || "";
     elements.dimension.value = plan.dimension || "";
+    activePlan = plan;
+    renderPlanReview(plan);
     elements["plan-form"].hidden = plan.status === "needs-clarification";
     if (plan.status === "needs-clarification") showDateClarification(plan);
     else setStatus("Browser-provided AI suggested a constrained plan. Review it before running the deterministic query.");
   } catch (error) {
     setStatus(`Browser-provided planning failed: ${error.message}. The deterministic planner remains available.`, "error");
   } finally {
+    await activePlanner?.close?.();
+    activePlanner = null;
     cancel.remove();
     plannerAbortController = null;
   }
@@ -852,18 +919,22 @@ async function runHuggingFacePlanner() {
         if (progress.status === "progress" && progress.progress) setStatus(`Downloading the optional local model: ${Math.round(progress.progress)}%`);
       },
     });
+    activePlanner = provider;
     const plan = await provider.plan({ question: elements.question.value, dataset: currentDataset, fields: currentFields });
     activePlannerProvenance = { modelBackend: provider.id, modelIdentifier: provider.modelIdentifier, modelVersion: provider.modelVersion };
     elements.aggregation.value = plan.aggregation || "count";
     elements.measure.value = plan.measure || "";
     elements.dimension.value = plan.dimension || "";
+    activePlan = plan;
+    renderPlanReview(plan);
     elements["plan-form"].hidden = plan.status === "needs-clarification";
     if (plan.status === "needs-clarification") showDateClarification(plan);
     else setStatus("The local model suggested a constrained plan. Review it before running the deterministic query.");
-    await provider.close();
   } catch (error) {
     setStatus(`Local model planning failed: ${error.message}. The deterministic planner remains available.`, "error");
   } finally {
+    await activePlanner?.close?.();
+    activePlanner = null;
     cancel.remove();
     plannerAbortController = null;
   }
