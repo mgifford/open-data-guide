@@ -55,7 +55,7 @@ npm run preview
 
 `openapi-reference` began with API documentation and tried to make OpenAPI easier than Swagger. Open Data Guide begins with a person, a dataset, and a question. Catalog API variants are adapters behind that experience, not the interface itself.
 
-See [RESEARCH.md](RESEARCH.md) for projects worth learning from, [ARCHITECTURE.md](ARCHITECTURE.md) for the system boundaries, and [ACCESSIBILITY.md](ACCESSIBILITY.md) for the initial accessibility contract.
+See [RESEARCH.md](RESEARCH.md) for projects worth learning from, [ARCHITECTURE.md](ARCHITECTURE.md) for the system boundaries, [BASELINE.md](BASELINE.md) for Phase 0 evidence, and [ACCESSIBILITY.md](ACCESSIBILITY.md) for the initial accessibility contract.
 
 ## GitHub Pages
 

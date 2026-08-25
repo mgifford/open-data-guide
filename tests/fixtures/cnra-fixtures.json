@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "source": "https://data.cnra.ca.gov/dataset",
+  "retrievedAt": "2026-08-25",
+  "datasets": [
+    {
+      "id": "state-water-project-monthly-report-of-operations",
+      "title": "State Water Project Monthly Report of Operations",
+      "url": "https://data.cnra.ca.gov/dataset/state-water-project-monthly-report-of-operations",
+      "localFile": "cnra-reservoir.csv",
+      "observed": ["mixed numeric sentinel None", "date values require human-readable formatting"]
+    },
+    {
+      "id": "bobcat-camera-trap-detections-cdfw-ds3402",
+      "title": "Bobcat Camera Trap Detections",
+      "url": "https://data.cnra.ca.gov/dataset/bobcat-camera-trap-detections-cdfw-ds3402",
+      "localFile": "cnra-bobcat.csv",
+      "observed": ["80 project_name categories in live exploration", "default chart would be too dense"]
+    },
+    {
+      "id": "dry-well-reporting-system-data",
+      "title": "Dry Well Reporting System Data",
+      "url": "https://data.cnra.ca.gov/dataset/dry-well-reporting-system-data",
+      "localFile": "cnra-dry-well.csv",
+      "observed": ["51 County categories in live exploration", "multiple possible date dimensions", "Not supplied must remain a missing category"]
+    }
+  ]
+}
