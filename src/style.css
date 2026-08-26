@@ -93,6 +93,8 @@ pre { white-space: pre-wrap; word-break: break-word; background: var(--backgroun
 .saved-card { border-top: 1px solid var(--border); padding-block: 1rem; }
 .saved-card:first-child { border-top: 0; }
 .saved-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.ai-summary { border-left: .3rem solid var(--accent); padding: .5rem 0 .5rem 1rem; margin-block: .75rem; }
+.ai-summary h5 { margin: 0 0 .25rem; }
 .filters { margin-block: 1rem; }
 .filters-heading { font-weight: 700; margin: 0 0 .25rem; }
 .filter-row { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin-block: .5rem; }

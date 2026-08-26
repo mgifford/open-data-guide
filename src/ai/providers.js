@@ -1,5 +1,6 @@
 import { capabilityDecision, normalizeAvailability, resolvePath } from "./browser-capabilities.js";
 import { interpretQuestion, validatePlan } from "../query/plan.js";
+import { SUMMARY_SCHEMA, summarizeResult } from "./summary.js";
 
 export const LOCAL_MODEL = {
   id: "onnx-community/Qwen2.5-0.5B-Instruct",
@@ -125,6 +126,21 @@ export function createChromePromptProvider(root = globalThis, options = {}) {
       validateProviderPlan(plan, input.fields);
       return plan;
     },
+    async summarize({ plan, rows }) {
+      if (!languageModel || typeof languageModel.create !== "function") throw new Error("Browser-provided AI is not available.");
+      const availability = await this.availability();
+      if (!availability.ready) throw new Error("Browser-provided AI is not ready. Approve its browser-managed download before summarizing.");
+      if (!session) session = await languageModel.create({ signal: options.signal });
+      const generate = async (prompt) => {
+        try {
+          return await session.prompt(prompt, { responseConstraint: SUMMARY_SCHEMA, signal: options.signal });
+        } catch (error) {
+          if (!/constraint|schema|option|unsupported/i.test(error.message || "")) throw error;
+          return await session.prompt(prompt, { signal: options.signal });
+        }
+      };
+      return summarizeResult({ plan, rows, generate });
+    },
     async prepare(onProgress) {
       if (!languageModel || typeof languageModel.create !== "function") throw new Error("Browser-provided AI is not available.");
       const availability = await this.availability();
@@ -175,6 +191,18 @@ export function createHuggingFaceProvider(options = {}) {
       const plan = JSON.parse(json);
       validateProviderPlan(plan, input.fields);
       return { ...plan, modelBackend: "huggingface-local", modelIdentifier: LOCAL_MODEL.id, modelVersion: LOCAL_MODEL.revision };
+    },
+    async summarize({ plan, rows }) {
+      if (options.approved !== true) throw new Error("Local model use requires explicit approval.");
+      if (!generator) {
+        const { pipeline } = await import(/* @vite-ignore */ "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1");
+        generator = await pipeline("text-generation", LOCAL_MODEL.id, { revision: LOCAL_MODEL.revision, dtype: "q4", progress_callback: options.onProgress });
+      }
+      const generate = async (prompt) => {
+        const output = await generator(prompt, { max_new_tokens: 220, temperature: 0, do_sample: false, return_full_text: false, signal: options.signal });
+        return Array.isArray(output) ? output[0]?.generated_text || "" : String(output || "");
+      };
+      return summarizeResult({ plan, rows, generate });
     },
     async close() {
       generator = null;

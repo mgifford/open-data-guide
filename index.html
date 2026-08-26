@@ -209,6 +209,12 @@
           <section class="story" aria-labelledby="story-heading">
             <h4 id="story-heading">What this result says</h4>
             <p id="story-text"></p>
+            <div id="ai-summary" class="ai-summary" role="group" aria-labelledby="ai-summary-heading" hidden>
+              <h5 id="ai-summary-heading">AI-generated summary</h5>
+              <p id="ai-summary-text" aria-live="polite"></p>
+              <p id="ai-summary-note" class="field-note"></p>
+            </div>
+            <button id="ai-summary-button" class="button-secondary" type="button" hidden>Summarize this result with AI</button>
           </section>
           <div class="result-actions" aria-label="Result downloads">
             <button id="download-csv-button" type="button">Download CSV</button>
