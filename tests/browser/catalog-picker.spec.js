@@ -24,6 +24,8 @@ test.describe("curated catalog picker", () => {
     await expect(page.locator("#catalog-details")).toContainText("natural-resource datasets");
     await expect(page.locator("#catalog-details")).toContainText("CKAN");
     await expect(page.locator("#catalog-details")).toContainText("California");
+    await expect(page.locator("#catalog-details")).toContainText("Why included");
+    await expect(page.locator("#catalog-details")).toContainText("API type");
     await expect(page.locator("#catalog-details")).toContainText("Not yet verified");
     await expect(page.getByRole("link", { name: /catalog website/ })).toBeVisible();
 

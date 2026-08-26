@@ -1104,8 +1104,10 @@ function renderCatalogDetails(catalog) {
   dl.className = "metadata";
   const rows = [
     ["Description", catalog.description],
-    ["Platform", `${catalog.platform} (API ${catalog.apiVersion})`],
+    ["Platform", catalog.platform],
+    ["API type", `${catalog.platform} API version ${catalog.apiVersion}`],
     ["Jurisdiction", catalog.jurisdiction],
+    ["Why included", catalog.inclusionReason],
     ["Last verified", verified],
     ["Known limitations", catalog.knownLimitations],
   ];

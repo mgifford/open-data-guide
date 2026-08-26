@@ -41,6 +41,16 @@
           <p class="field-hint">The file is read and processed in this browser. It is not uploaded to any server.</p>
         </div>
         <p class="sample-line"><button class="button-secondary" id="sample-button" type="button">Try the included sample</button> <span class="field-hint">A small synthetic file kept only as a developer and test fixture, not real data.</span></p>
+        <details class="access-limits">
+          <summary>What can and cannot be opened in the browser</summary>
+          <ul>
+            <li><strong>Cross-origin (CORS):</strong> a catalog or file must allow browser requests from other sites. Many do not, so some datasets cannot be read here even though they open in a normal browser tab.</li>
+            <li><strong>Authentication:</strong> datasets that need an API key, sign-in, or token are not supported; this guide only opens public resources.</li>
+            <li><strong>Format:</strong> direct files must be CSV, JSON, or Parquet. Local uploads currently support CSV only.</li>
+            <li><strong>Size:</strong> browser memory is limited. Automatic loading is refused above 500 MB, and large files may still be slow.</li>
+          </ul>
+          <p>Not every open dataset is browser-accessible. Finding a dataset in a catalog does not guarantee its files can be opened here.</p>
+        </details>
         <div id="status" class="status" role="status" aria-live="polite"></div>
       </section>
 
