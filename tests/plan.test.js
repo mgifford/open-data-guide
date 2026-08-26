@@ -57,6 +57,29 @@ describe("constrained query plans", () => {
     expect(sql).not.toContain("category ASC");
   });
 
+  it("groups a date field by a chosen grain and orders chronologically", () => {
+    const dated = [...fields, { name: "paid_on", type: "DATE" }];
+    const sql = compilePlan({ aggregation: "count", dimension: "paid_on", dateGrain: "month" }, dated);
+    expect(sql).toContain("date_trunc('month', \"paid_on\") AS category");
+    expect(sql).toContain("GROUP BY date_trunc('month', \"paid_on\")");
+    expect(sql).toContain("ORDER BY category ASC");
+  });
+
+  it("accepts a date grain on a field whose values were inferred as dates", () => {
+    const inferred = [...fields, { name: "reported", type: "VARCHAR", inferredType: "date" }];
+    const sql = compilePlan({ aggregation: "count", dimension: "reported", dateGrain: "year" }, inferred);
+    expect(sql).toContain("date_trunc('year', \"reported\")");
+  });
+
+  it("rejects an unsupported date grain", () => {
+    const dated = [...fields, { name: "paid_on", type: "DATE" }];
+    expect(() => compilePlan({ aggregation: "count", dimension: "paid_on", dateGrain: "week" }, dated)).toThrow(/date grain/i);
+  });
+
+  it("rejects a date grain on a non-temporal grouping field", () => {
+    expect(() => compilePlan({ aggregation: "count", dimension: "state", dateGrain: "month" }, fields)).toThrow(/date or time/i);
+  });
+
   it("rejects numeric calculations over postal and Census geography codes", () => {
     expect(() => compilePlan({ aggregation: "avg", measure: "state", dimension: "" }, [{ name: "state", type: "VARCHAR", semanticRole: "zip-code" }])).toThrow(/labels/);
     expect(() => compilePlan({ aggregation: "distinct_count", measure: "state", dimension: "" }, [{ name: "state", type: "VARCHAR", semanticRole: "zip-code" }])).not.toThrow();

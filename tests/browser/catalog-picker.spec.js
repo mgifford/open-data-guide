@@ -26,7 +26,7 @@ test.describe("curated catalog picker", () => {
     await expect(page.locator("#catalog-details")).toContainText("California");
     await expect(page.locator("#catalog-details")).toContainText("Why included");
     await expect(page.locator("#catalog-details")).toContainText("API type");
-    await expect(page.locator("#catalog-details")).toContainText("Not yet verified");
+    await expect(page.locator("#catalog-details")).toContainText("2026-08-26");
     await expect(page.getByRole("link", { name: /catalog website/ })).toBeVisible();
 
     // The base catalog URL is only inside the "Add another catalog" disclosure, not the main search flow.

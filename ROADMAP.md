@@ -4,14 +4,17 @@
 
 - Static vanilla JavaScript application with direct-resource and catalog resolution.
 - Local DuckDB-Wasm querying, accessible result tables, constrained SQL compilation, chart rendering, browser AI capability probing, saved dataset markers, versioned workspace storage, bounded query history, catalog search, export/import, and join evidence profiling.
+- Review-UI filter controls and date-grouping (date-grain) controls over the validated query plan.
+- Typed relationship records with reviewed, bounded comparison provenance.
+- On-demand code splitting for the DuckDB and chart modules, and cancellable local and remote queries.
+- Browser-side catalog health check (`npm run test:catalog-health`) that records verified dates in `lastVerified`.
 - CNRA data-catalog exploration matrix.
 
 ## Next
 
-- Add complete filter and date-grouping controls to the review UI.
-- Store typed relationship records and expose reviewed comparison workflows.
 - Add deeper Playwright keyboard/reflow/forced-colors checks and manual browser AI verification.
-- Improve code splitting for DuckDB assets and add explicit timeout/cancellation recovery.
+- Restore Data.gov browser access once a CORS-enabled endpoint or proxy is available; it is currently CORS-blocked for browser API requests.
+
 
 ## Phase 3.5: Geographic reference-data connectors
 
@@ -34,3 +37,10 @@ The provider boundary and deterministic fallback are complete. Browser-managed d
 - Use documented CKAN DataStore requests when they avoid large file downloads.
 - Keep transfer, memory, pagination, cancellation, and refusal limits visible and reproducible.
 - Verify join keys, types, uniqueness, null rates, cardinality, geography, and time grain before any confirmed comparison.
+
+## Phase 8A: Guided dataset-discovery journey
+
+- Present a persistent six-step journey (Choose data, Understand the dataset, Choose a question, Analyze the data, Review and refine, Connect related data) that mirrors the analysis flow.
+- Track the current and furthest-reached step so completed steps link back to their section and the current step is marked with `aria-current="step"`.
+- Disclose not-yet-available steps as upcoming rather than silently disabling them, keeping the sequence understandable to assistive technology.
+- Version the journey definition so future step changes remain explicit.

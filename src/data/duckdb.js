@@ -134,7 +134,30 @@ export async function loadResource(resource, options = {}) {
   return { fields, preview, filename, sourceDigest: sourceProfile?.sourceDigest || "", quality: { rowCount: Number(quality.row_count || 0), rawValuesRetained: resource.format === "csv", parseFailures: sourceProfile?.parseFailures || [] } };
 }
 
-export async function runQuery(sql) {
+export async function runQuery(sql, options = {}) {
   if (!connection) throw new Error("Load a resource before running a query.");
-  return rowsOf(await connection.query(sql));
+  const { signal } = options;
+  if (!signal) return rowsOf(await connection.query(sql));
+  if (signal.aborted) throw new DOMException("The query was cancelled.", "AbortError");
+  const conn = connection;
+  const onAbort = () => conn.cancelSent().catch(() => {});
+  signal.addEventListener("abort", onAbort, { once: true });
+  try {
+    let reader;
+    try {
+      reader = await conn.send(sql, true);
+    } catch (error) {
+      if (signal.aborted) throw new DOMException("The query was cancelled.", "AbortError");
+      throw error;
+    }
+    const rows = [];
+    for await (const batch of reader) {
+      if (signal.aborted) throw new DOMException("The query was cancelled.", "AbortError");
+      for (const row of batch) rows.push(jsonSafe(row.toJSON ? row.toJSON() : row));
+    }
+    if (signal.aborted) throw new DOMException("The query was cancelled.", "AbortError");
+    return rows;
+  } finally {
+    signal.removeEventListener("abort", onAbort);
+  }
 }

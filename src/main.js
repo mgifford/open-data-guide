@@ -8,10 +8,8 @@ import {
 import { listBuiltinCatalogs, getBuiltinCatalog, detectCatalog, normalizeCustomCatalog, DEFAULT_CATALOG_ID } from "./catalog/catalogs.js";
 import { catalogSearchTerms, explainRelatedDataset, relatedDatasets } from "./catalog/related.js";
 import { compareFields, historyStatus, sourceChanged } from "./catalog/history.js";
-import { loadResource, runQuery } from "./data/duckdb.js";
 import { compilePlan, interpretQuestion, validatePlan } from "./query/plan.js";
 import { renderTable } from "./render/table.js";
-import { renderChart } from "./render/chart.js";
 import { renderSchematic } from "./render/schematic.js";
 import { describeResult } from "./render/advisor.js";
 import { downloadText, resultsToCsv, resultsToJson } from "./render/export.js";
@@ -28,6 +26,7 @@ const elements = Object.fromEntries([
   "preview-table", "quality-summary", "question-section", "question-form", "question", "question-interpret-button", "plan-form", "aggregation",
   "measure", "dimension", "run-plan-button", "plan-review", "query-output", "result-explanation", "result-table", "chart", "sql-output", "download-csv-button", "download-json-button", "download-spec-button",
     "schematic-view",
+  "date-grain", "date-grain-note", "filter-list", "filters-note", "add-filter-button",
   "provenance", "saved-list", "related-list", "semantic-button", "capability-output",
   "catalog-form", "catalog-select", "catalog-details", "catalog-publisher-link", "catalog-url", "catalog-query", "catalog-results",
   "custom-catalog-form", "custom-catalog-name", "test-catalog-button", "save-catalog-button", "catalog-detection", "custom-catalog-list",
@@ -121,7 +120,8 @@ function resetPlannerProvenance() {
 function renderPlanReview(plan) {
   elements["plan-review"].replaceChildren();
   const summary = document.createElement("p");
-  summary.textContent = `Plan: ${plan.aggregation}; measure: ${plan.measure || "row count"}; group: ${plan.dimension || "none"}; time field: ${plan.timeField || "none"}; limit: ${plan.limit}.`;
+  const grouping = plan.dimension ? `${plan.dimension}${plan.dateGrain ? ` by ${plan.dateGrain}` : ""}` : "none";
+  summary.textContent = `Plan: ${plan.aggregation}; measure: ${plan.measure || "row count"}; group: ${grouping}; time field: ${plan.timeField || "none"}; limit: ${plan.limit}.`;
   const detail = document.createElement("details");
   const disclosure = document.createElement("summary");
   disclosure.textContent = "Show filters, visualization, assumptions, and warnings";
@@ -139,6 +139,9 @@ function applySuggestion(plan) {
   fillSelect(elements.dimension, currentFields, true);
   elements.measure.value = activePlan.measure || "";
   elements.dimension.value = activePlan.dimension || "";
+  updateDateGrainAvailability();
+  if (!elements["date-grain"].disabled) elements["date-grain"].value = activePlan.dateGrain || "";
+  renderFilterRows(activePlan.filters || []);
   elements["plan-form"].hidden = false;
   renderPlanReview(activePlan);
   validateCurrentControls();
@@ -146,6 +149,9 @@ function applySuggestion(plan) {
 }
 
 function controlsPlan() {
+  const dimensionField = currentFields.find((field) => field.name === elements.dimension.value);
+  const grainAvailable = isTemporalField(dimensionField);
+  const dateGrain = grainAvailable ? elements["date-grain"].value : "";
   const plan = {
     ...(activePlan || {}),
     version: 1,
@@ -154,14 +160,140 @@ function controlsPlan() {
     aggregation: elements.aggregation.value,
     measure: elements.measure.value,
     dimension: elements.dimension.value,
+    dateGrain,
     timeField: activePlan?.timeField || currentFields.find((field) => field.name === elements.dimension.value && /DATE|TIME|TIMESTAMP/i.test(field.type || ""))?.name || "",
-    filters: activePlan?.filters || [],
+    filters: readFilters(),
     limit: activePlan?.limit || 100,
     assumptions: activePlan?.assumptions || [],
     warnings: activePlan?.warnings || [],
     visualization: activePlan?.visualization || { kind: elements.dimension.value ? "bar" : "table", x: elements.dimension.value || null, y: "value", series: null },
   };
   return plan;
+}
+
+function isTemporalField(field) {
+  return !!field && (/DATE|TIME|TIMESTAMP/i.test(field.type || "") || field.inferredType === "date");
+}
+
+const FILTER_OPERATOR_LABELS = {
+  equals: "equals",
+  not_equals: "does not equal",
+  greater_than: "greater than",
+  greater_or_equal: "greater than or equal to",
+  less_than: "less than",
+  less_or_equal: "less than or equal to",
+};
+const FILTER_GEO_CODE_ROLES = new Set(["postal-code", "zip-code", "zip-plus-four", "zcta", "fips"]);
+
+function filterOperatorsFor(resource) {
+  return resource && datastoreResource(resource) ? ["equals"] : Object.keys(FILTER_OPERATOR_LABELS);
+}
+
+// Read filter rows into validated plan filters, dropping incomplete rows and
+// coercing numeric fields so comparisons stay numeric rather than lexical.
+function readFilters() {
+  return [...elements["filter-list"].querySelectorAll(".filter-row")]
+    .map((row) => ({
+      field: row.querySelector(".filter-field").value,
+      operator: row.querySelector(".filter-operator").value,
+      rawValue: row.querySelector(".filter-value").value,
+    }))
+    .filter((row) => row.field && row.rawValue !== "")
+    .map(({ field, operator, rawValue }) => {
+      const fieldDef = currentFields.find((entry) => entry.name === field);
+      const numeric = fieldDef && /INT|DECIMAL|DOUBLE|FLOAT|REAL|NUMERIC|HUGEINT/i.test(fieldDef.type || "") && !FILTER_GEO_CODE_ROLES.has(fieldDef.semanticRole);
+      const value = numeric && Number.isFinite(Number(rawValue)) ? Number(rawValue) : rawValue;
+      return { field, operator, value };
+    });
+}
+
+function addFilterRow(filter = {}) {
+  const row = document.createElement("div");
+  row.className = "filter-row";
+
+  const fieldSelect = document.createElement("select");
+  fieldSelect.className = "filter-field";
+  fieldSelect.setAttribute("aria-label", "Filter field");
+  const blank = document.createElement("option");
+  blank.value = "";
+  blank.textContent = "Choose a field";
+  fieldSelect.append(blank);
+  currentFields.forEach((field) => {
+    const option = document.createElement("option");
+    option.value = field.name;
+    option.textContent = field.name;
+    fieldSelect.append(option);
+  });
+  fieldSelect.value = filter.field || "";
+
+  const operatorSelect = document.createElement("select");
+  operatorSelect.className = "filter-operator";
+  operatorSelect.setAttribute("aria-label", "Filter comparison");
+  const operators = filterOperatorsFor(currentResource);
+  operators.forEach((operator) => {
+    const option = document.createElement("option");
+    option.value = operator;
+    option.textContent = FILTER_OPERATOR_LABELS[operator];
+    operatorSelect.append(option);
+  });
+  operatorSelect.value = operators.includes(filter.operator) ? filter.operator : operators[0];
+
+  const valueInput = document.createElement("input");
+  valueInput.type = "text";
+  valueInput.className = "filter-value";
+  valueInput.setAttribute("aria-label", "Filter value");
+  valueInput.value = filter.value ?? "";
+
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.className = "button-secondary compact-button";
+  remove.textContent = "Remove";
+  remove.setAttribute("aria-label", "Remove filter");
+
+  const onFilterChange = () => {
+    activePlan = controlsPlan();
+    resetPlannerProvenance();
+    renderPlanReview(activePlan);
+    validateCurrentControls();
+  };
+  [fieldSelect, operatorSelect].forEach((control) => control.addEventListener("change", onFilterChange));
+  valueInput.addEventListener("input", onFilterChange);
+  remove.addEventListener("click", () => {
+    row.remove();
+    onFilterChange();
+  });
+
+  row.append(fieldSelect, operatorSelect, valueInput, remove);
+  elements["filter-list"].append(row);
+  return row;
+}
+
+function renderFilterRows(filters = []) {
+  elements["filter-list"].replaceChildren();
+  filters.forEach((filter) => addFilterRow(filter));
+}
+
+// Explain the DataStore exact-match limitation instead of silently dropping operators.
+function updateFilterAvailability() {
+  const remote = currentResource ? datastoreResource(currentResource) : false;
+  elements["filters-note"].textContent = remote
+    ? "This catalog resource is queried through the CKAN DataStore, which supports only exact-match (equals) filters."
+    : "Filters narrow the rows before the calculation runs. Each filter compares one field with one value.";
+  renderFilterRows(readFilters());
+}
+
+// Enable the date-grain control only for date groupings; explain when it is unavailable
+// rather than leaving a silently disabled control.
+function updateDateGrainAvailability() {
+  const dimensionField = currentFields.find((field) => field.name === elements.dimension.value);
+  const available = isTemporalField(dimensionField);
+  elements["date-grain"].disabled = !available;
+  if (!available) elements["date-grain"].value = "";
+  elements["date-grain-note"].textContent = available
+    ? "Group the selected date field by calendar year, month, or day, or keep its exact values."
+    : elements.dimension.value
+      ? "Date grain applies only when you group by a date or time field."
+      : "Group by a date or time field to summarise it by year, month, or day.";
 }
 
 function validateCurrentControls() {
@@ -569,6 +701,8 @@ function renderProfile(profile) {
   renderSchematic(elements["schematic-view"], currentFields, currentQualities, currentResource, applySuggestion);
   fillSelect(elements.measure, numeric, false);
   fillSelect(elements.dimension, currentFields, true);
+  renderFilterRows([]);
+  updateFilterAvailability();
   elements["explore-section"].hidden = false;
   elements["question-section"].hidden = false;
   journey.reach(3);
@@ -581,6 +715,9 @@ function renderProfile(profile) {
     elements.aggregation.value = plan.aggregation || "count";
     elements.measure.value = plan.measure || "";
     elements.dimension.value = plan.dimension || "";
+    updateDateGrainAvailability();
+    if (!elements["date-grain"].disabled) elements["date-grain"].value = plan.dateGrain || "";
+    renderFilterRows(plan.filters || []);
     elements["plan-form"].hidden = false;
     const comparison = compareFields(pendingHistoryRecord.fieldSnapshot || [], currentFields);
     const changed = comparison.removed.length || comparison.added.length || comparison.retyped.length || sourceChanged(currentDataset, pendingHistoryRecord);
@@ -598,12 +735,14 @@ function renderProfile(profile) {
     }
     pendingHistoryPlan = null;
   }
-  [elements.aggregation, elements.measure, elements.dimension].forEach((control) => control.addEventListener("change", () => {
+  [elements.aggregation, elements.measure, elements.dimension, elements["date-grain"]].forEach((control) => control.addEventListener("change", () => {
+    updateDateGrainAvailability();
     activePlan = controlsPlan();
     resetPlannerProvenance();
     renderPlanReview(activePlan);
     validateCurrentControls();
   }));
+  updateDateGrainAvailability();
 }
 
 // Local CSV files are read through a blob URL so DuckDB-Wasm parses them in the
@@ -707,6 +846,7 @@ elements["load-resource-button"].addEventListener("click", async () => {
   const remote = datastoreResource(currentResource);
   setStatus(remote ? "Loading a bounded schema and preview through CKAN DataStore..." : "Starting DuckDB-Wasm and reading the resource. Large files may take time...", "info", elements["resource-status"]);
   try {
+    const { loadResource } = await import("./data/duckdb.js");
     const [profile, dictionary] = await Promise.all([loadResource(currentResource, { signal: resourceAbortController.signal }), loadDataDictionary(currentResource, { signal: resourceAbortController.signal })]);
     const definitions = new Map(dictionary.flatMap((field) => [
       [String(field.name || "").toLowerCase(), field.description],
@@ -758,6 +898,9 @@ elements["question-form"].addEventListener("submit", (event) => {
   elements.aggregation.value = plan.aggregation;
   elements.measure.value = plan.measure;
   elements.dimension.value = plan.dimension;
+  updateDateGrainAvailability();
+  if (!elements["date-grain"].disabled) elements["date-grain"].value = plan.dateGrain || "";
+  renderFilterRows(plan.filters || []);
   elements["plan-form"].hidden = false;
   if (plan.status === "needs-clarification") {
     elements["plan-form"].hidden = true;
@@ -777,6 +920,11 @@ elements["question-form"].addEventListener("submit", (event) => {
 
 elements["cancel-query-button"].addEventListener("click", () => queryAbortController?.abort());
 
+elements["add-filter-button"].addEventListener("click", () => {
+  addFilterRow();
+  validateCurrentControls();
+});
+
 elements["plan-form"].addEventListener("submit", async (event) => {
   event.preventDefault();
   const plan = controlsPlan();
@@ -786,10 +934,12 @@ elements["plan-form"].addEventListener("submit", async (event) => {
     const remote = datastoreResource(currentResource);
     queryAbortController = new AbortController();
     elements["run-plan-button"].disabled = true;
-    elements["cancel-query-button"].hidden = !remote;
+    elements["cancel-query-button"].hidden = false;
     journey.reach(4);
     setStatus(remote ? "Running the validated query through the CKAN DataStore..." : "Running the validated query in DuckDB-Wasm...", "info", elements["query-status"]);
-    const result = remote ? await runDataStorePlan(currentResource, plan, { signal: queryAbortController.signal }) : { rows: await runQuery(sql), total: null, scanned: null, truncated: false, requests: [], maxRows: null };
+    let runQuery;
+    if (!remote) ({ runQuery } = await import("./data/duckdb.js"));
+    const result = remote ? await runDataStorePlan(currentResource, plan, { signal: queryAbortController.signal }) : { rows: await runQuery(sql, { signal: queryAbortController.signal }), total: null, scanned: null, truncated: false, requests: [], maxRows: null };
     const rows = result.rows;
     const remoteProvenance = remote ? { catalogOrigin: currentResource.catalogUrl, resourceId: currentResource.datastoreId, maxRows: result.maxRows, totalRowsReported: result.total, rowsScanned: result.scanned, truncated: result.truncated, requests: result.requests } : null;
     currentResult = { rows, plan, sql, vegaLiteSpec: null, remote, total: result.total, scanned: result.scanned, truncated: result.truncated, remoteProvenance };
@@ -798,7 +948,10 @@ elements["plan-form"].addEventListener("submit", async (event) => {
     elements["result-explanation"].textContent = result.truncated ? `Incomplete preview only. The row budget stopped this query after ${result.scanned.toLocaleString()} of ${result.total.toLocaleString()} rows. Narrow the filters before interpreting or exporting an aggregate.` : describeResult(plan, { kind: plan.dimension ? "bar" : "table" }, rows.length, rows.length);
     elements["story-text"].textContent = result.truncated ? "No insight is generated from this incomplete aggregate." : resultStory(rows, plan);
     renderTable(elements["result-table"], rows, `${result.truncated ? "Incomplete preview" : "Result"} for: ${elements.question.value}`);
-    currentResult.vegaLiteSpec = result.truncated ? null : await renderChart(elements.chart, rows, plan, currentFields);
+    if (!result.truncated) {
+      const { renderChart } = await import("./render/chart.js");
+      currentResult.vegaLiteSpec = await renderChart(elements.chart, rows, plan, currentFields);
+    }
     elements["download-csv-button"].disabled = result.truncated;
     elements["download-json-button"].disabled = result.truncated;
     elements["download-spec-button"].disabled = result.truncated || !currentResult.vegaLiteSpec;
@@ -852,7 +1005,7 @@ elements["plan-form"].addEventListener("submit", async (event) => {
     setStatus(result.truncated ? "Remote query stopped at the row budget. Charting and exports are disabled until the query is narrowed." : remote ? "Query complete. Review the table and exact DataStore pagination provenance." : "Query complete. Review the table, chart, and SQL.", result.truncated ? "error" : "info", elements["query-status"]);
   } catch (error) {
     const cancelled = error.name === "AbortError" || queryAbortController?.signal.aborted;
-    setStatus(cancelled ? "Remote query cancelled. No result was saved." : error.message, cancelled ? "info" : "error", elements["query-status"]);
+    setStatus(cancelled ? "Query cancelled. No result was saved." : error.message, cancelled ? "info" : "error", elements["query-status"]);
   } finally {
     queryAbortController = null;
     elements["cancel-query-button"].hidden = true;

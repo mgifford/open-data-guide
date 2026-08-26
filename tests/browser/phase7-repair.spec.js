@@ -91,8 +91,8 @@ test("cancels an in-flight remote query", async ({ page }) => {
   await page.getByRole("textbox", { name: "Question", exact: true }).fill("count by state");
   await page.getByRole("button", { name: "Interpret question" }).click();
   await page.getByRole("button", { name: "Run verified query" }).click();
-  await expect(page.getByRole("button", { name: "Cancel remote query" })).toBeVisible();
-  await page.getByRole("button", { name: "Cancel remote query" }).click();
+  await expect(page.getByRole("button", { name: "Cancel query" })).toBeVisible();
+  await page.getByRole("button", { name: "Cancel query" }).click();
   await expect(page.locator("#query-status")).toContainText("cancelled", { timeout: 4000 });
 });
 

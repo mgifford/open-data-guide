@@ -182,9 +182,23 @@
             <select id="measure" name="measure"></select>
             <label for="dimension">Group by</label>
             <select id="dimension" name="dimension"></select>
+            <label for="date-grain">Date grain</label>
+            <select id="date-grain" name="date-grain" aria-describedby="date-grain-note">
+              <option value="">Exact values</option>
+              <option value="year">By year</option>
+              <option value="month">By month</option>
+              <option value="day">By day</option>
+            </select>
+            <p id="date-grain-note" class="field-note"></p>
+            <div class="filters" role="group" aria-labelledby="filters-heading">
+              <p id="filters-heading" class="filters-heading">Filters (optional)</p>
+              <p id="filters-note" class="field-note">Filters narrow the rows before the calculation runs. Each filter compares one field with one value.</p>
+              <div id="filter-list"></div>
+              <button id="add-filter-button" class="button-secondary" type="button">Add filter</button>
+            </div>
             <div class="operation-actions">
               <button id="run-plan-button" type="submit">Run verified query</button>
-              <button id="cancel-query-button" class="button-secondary" type="button" hidden>Cancel remote query</button>
+              <button id="cancel-query-button" class="button-secondary" type="button" hidden>Cancel query</button>
             </div>
             <div id="query-status" class="status" role="status" aria-live="polite"></div>
           </fieldset>

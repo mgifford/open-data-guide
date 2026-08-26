@@ -7,7 +7,7 @@ test("sample dataset reaches quality profile, table, chart, and SQL", async ({ p
   await expect(page.locator("#processing")).toContainText("AI is never required");
   await page.getByRole("button", { name: "Try the included sample" }).click();
   await expect(page.getByRole("heading", { name: "payments-sample.csv" })).toBeVisible();
-  await expect(page.getByText("Direct file")).toBeVisible();
+  await expect(page.getByText("Direct file", { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Load selected resource" }).click();
   await expect(page.getByRole("heading", { name: "Data quality before analysis" })).toBeVisible();
@@ -39,4 +39,46 @@ test("sample dataset reaches quality profile, table, chart, and SQL", async ({ p
   const jsonDownload = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download JSON" }).click();
   await expect((await jsonDownload).suggestedFilename()).toBe("open-data-guide-results.json");
+});
+
+test("groups a date field by month using the date-grain control", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Try the included sample" }).click();
+  await page.getByRole("button", { name: "Load selected resource" }).click();
+  await expect(page.getByRole("heading", { name: "Data quality before analysis" })).toBeVisible();
+
+  const question = page.getByRole("textbox", { name: "Question" });
+  await question.fill("count by payment_date");
+  await page.getByRole("button", { name: "Interpret question" }).click();
+
+  const grain = page.getByLabel("Date grain");
+  await expect(grain).toBeEnabled();
+  await grain.selectOption("month");
+
+  await page.getByRole("button", { name: "Run verified query" }).click();
+  await expect(page.getByRole("table", { name: /Result for:/ })).toBeVisible();
+  await page.getByText("Query and provenance").first().click();
+  await expect(page.locator("#sql-output")).toContainText("date_trunc('month', \"payment_date\")");
+});
+
+test("applies a user-added numeric filter to the query", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Try the included sample" }).click();
+  await page.getByRole("button", { name: "Load selected resource" }).click();
+  await expect(page.getByRole("heading", { name: "Data quality before analysis" })).toBeVisible();
+
+  const question = page.getByRole("textbox", { name: "Question" });
+  await question.fill("count by state");
+  await page.getByRole("button", { name: "Interpret question" }).click();
+
+  await page.getByRole("button", { name: "Add filter" }).click();
+  await page.getByLabel("Filter field").selectOption("amount_usd");
+  await page.getByLabel("Filter comparison").selectOption("greater_than");
+  await page.getByLabel("Filter value").fill("1000");
+
+  await page.getByRole("button", { name: "Run verified query" }).click();
+  await expect(page.getByRole("table", { name: /Result for:/ })).toBeVisible();
+  await page.getByText("Query and provenance").first().click();
+  // Numeric fields are compared numerically, not as quoted strings.
+  await expect(page.locator("#sql-output")).toContainText('WHERE "amount_usd" > 1000');
 });

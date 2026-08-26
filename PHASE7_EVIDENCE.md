@@ -19,14 +19,14 @@
 
 ## Verification
 
-- Unit gate: 125 tests passed across 15 files (`npm test`).
+- Unit gate: 140 tests passed across 17 files (`npm test`).
 - Production build: passed (`npm run build`) with the existing DuckDB/Vega large-chunk warning.
-- Browser gate: this environment did not successfully execute the Playwright specs because the browser runtime could not install or run under the current sandbox permissions, so Chromium/Firefox evidence remains pending until the host environment allows browser installation and execution.
+- Browser gate: 56 Playwright tests passed across Chromium and Firefox (`npm run test:browser`) after installing the browser binaries on the host, closing the previously pending sandbox gap.
 
 ## Known limits
 
-- Local DuckDB execution cannot currently be interrupted once synchronous parsing or a query has begun.
-- Parquet range-efficient reads are not yet implemented.
+- Local DuckDB queries now accept an abort signal and are cancelled through the connection's `cancelSent()` streaming interrupt; the in-browser Cancel control applies to both local and remote runs. Synchronous CSV parsing during initial resource loading still cannot be interrupted once started.
+- Parquet range-efficient reads are deferred. The current design buffers each resource in full and enforces a 500 MB transfer budget before and after buffering; HTTP-range parquet reads would bypass that budget and require range-support detection, reproducible range-request receipts, and a buffered fallback, so they are scoped to a future phase rather than the current whole-file model.
 - Join confirmation and unmatched-row reporting are limited to bounded preview evidence; no full-data join is implied.
 - DataStore remote aggregation is bounded by the configured row budget; incomplete results are labelled and cannot be charted or exported.
 - The Pages workflow is not claimable as green without the GitHub Actions run result for the current repository state.

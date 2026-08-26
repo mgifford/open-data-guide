@@ -29,10 +29,14 @@ describe("built-in catalog registry", () => {
     }
   });
 
-  it("does not mark built-in catalogs as verified without a health check", () => {
+  it("only records a verification date when a health check has confirmed browser access", () => {
     for (const catalog of listBuiltinCatalogs()) {
-      expect(catalog.lastVerified).toBeNull();
+      if (catalog.lastVerified !== null) {
+        expect(catalog.lastVerified).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      }
     }
+    // Data.gov's CKAN API rejects cross-origin browser requests, so it must stay unverified.
+    expect(getBuiltinCatalog("data-gov-ckan").lastVerified).toBeNull();
   });
 });
 

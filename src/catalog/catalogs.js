@@ -3,8 +3,9 @@ const SAFE_PROTOCOLS = new Set(["https:", "http:"]);
 export const CATALOG_REGISTRY_VERSION = 1;
 
 // Built-in catalogs are defined here and kept separate from user-saved catalogs.
-// `lastVerified` is null until a real browser-side API + CORS health check confirms
-// the endpoint responds. A loading website is not sufficient evidence.
+// `lastVerified` holds the date a real browser-side API + CORS health check
+// (`npm run test:catalog-health`) confirmed the endpoint responds, and stays null
+// otherwise. A loading website is not sufficient evidence.
 export const BUILTIN_CATALOGS = [
   {
     id: "cnra-ckan",
@@ -16,7 +17,7 @@ export const BUILTIN_CATALOGS = [
     description: "State environmental and natural-resource datasets covering water, groundwater, infrastructure, and wildlife.",
     subjects: ["water", "groundwater", "environment", "wildlife", "infrastructure"],
     inclusionReason: "Already covered by the application's automated tests and used as the default exploration starting point.",
-    lastVerified: null,
+    lastVerified: "2026-08-26",
     knownLimitations: "Some resources are large or lack CORS headers for direct browser download; DataStore availability varies by resource.",
     publisherUrl: "https://data.cnra.ca.gov",
     apiDocsUrl: "https://docs.ckan.org/en/latest/api/",
@@ -31,7 +32,7 @@ export const BUILTIN_CATALOGS = [
     description: "State health and human-services open data, including public health, licensing, and demographic datasets.",
     subjects: ["health", "public health", "demographics", "human services"],
     inclusionReason: "Broadens coverage to health and human-services data from a second California CKAN catalog.",
-    lastVerified: null,
+    lastVerified: "2026-08-26",
     knownLimitations: "Cross-origin access and DataStore availability vary by resource; verify each resource before assuming browser access.",
     publisherUrl: "https://data.chhs.ca.gov",
     apiDocsUrl: "https://docs.ckan.org/en/latest/api/",
@@ -46,7 +47,7 @@ export const BUILTIN_CATALOGS = [
     description: "Payments and transfers of value from drug and device companies to physicians and teaching hospitals.",
     subjects: ["health", "payments", "conflicts of interest", "transparency"],
     inclusionReason: "Provides a current federal DKAN catalog to exercise DKAN metastore search alongside CKAN catalogs.",
-    lastVerified: null,
+    lastVerified: "2026-08-26",
     knownLimitations: "Large national datasets; browser download and cross-origin access are not guaranteed for every resource.",
     publisherUrl: "https://openpaymentsdata.cms.gov",
     apiDocsUrl: "https://openpaymentsdata.cms.gov/about/api",
@@ -62,7 +63,7 @@ export const BUILTIN_CATALOGS = [
     subjects: ["federal", "aggregator", "multi-agency", "cross-domain"],
     inclusionReason: "Federal aggregator giving broad cross-agency coverage through a single CKAN API.",
     lastVerified: null,
-    knownLimitations: "Indexes external resources hosted elsewhere; catalog metadata retrieval does not imply a resource is browser-accessible.",
+    knownLimitations: "A 2026-08-26 browser health check confirmed the CKAN API rejects cross-origin browser requests (no CORS headers), so in-browser search and access are blocked; catalog metadata retrieval does not imply a resource is browser-accessible.",
     publisherUrl: "https://data.gov",
     apiDocsUrl: "https://docs.ckan.org/en/latest/api/",
   },

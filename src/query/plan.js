@@ -1,8 +1,13 @@
 const AGGREGATIONS = new Set(["count", "distinct_count", "sum", "avg", "median", "min", "max"]);
 const FILTER_OPERATORS = new Set(["equals", "not_equals", "greater_than", "greater_or_equal", "less_than", "less_or_equal"]);
+const DATE_GRAINS = new Set(["year", "month", "day"]);
 const GEOGRAPHIC_CODE_ROLES = new Set(["postal-code", "zip-code", "zip-plus-four", "zcta", "fips"]);
 const TEMPORAL_TYPES = /DATE|TIME|TIMESTAMP/i;
 const NUMERIC_TYPES = /INT|DECIMAL|DOUBLE|FLOAT|REAL|NUMERIC|HUGEINT/i;
+
+function isTemporalField(field) {
+  return !!field && (TEMPORAL_TYPES.test(field.type || "") || field.inferredType === "date");
+}
 
 export function quoteIdentifier(value) {
   return `"${String(value).replaceAll('"', '""')}"`;
@@ -33,6 +38,13 @@ export function validatePlan(plan, fields) {
     if (!names.has(filter.field)) throw new Error("A filter field is not in this dataset.");
     if (!FILTER_OPERATORS.has(filter.operator)) throw new Error("Unsupported filter operator.");
   });
+  if (plan.dateGrain) {
+    if (!DATE_GRAINS.has(plan.dateGrain)) throw new Error("Unsupported date grain.");
+    if (!plan.dimension) throw new Error("Group by a date field before choosing a date grain.");
+    if (!isTemporalField(fields.find((field) => field.name === plan.dimension))) {
+      throw new Error("A date grain requires the grouping field to be a date or time.");
+    }
+  }
   if (plan.limit !== undefined && (!Number.isInteger(plan.limit) || plan.limit < 1 || plan.limit > 1000)) {
     throw new Error("The result limit must be a whole number from 1 to 1000.");
   }
@@ -42,7 +54,11 @@ export function validatePlan(plan, fields) {
 
 export function compilePlan(plan, fields) {
   validatePlan(plan, fields);
-  const dimension = plan.dimension ? quoteIdentifier(plan.dimension) : null;
+  const dimensionField = plan.dimension ? fields.find((field) => field.name === plan.dimension) : null;
+  const grainActive = plan.dateGrain && DATE_GRAINS.has(plan.dateGrain) && isTemporalField(dimensionField);
+  const dimension = plan.dimension
+    ? grainActive ? `date_trunc('${plan.dateGrain}', ${quoteIdentifier(plan.dimension)})` : quoteIdentifier(plan.dimension)
+    : null;
   const valueExpression = plan.aggregation === "count" ? "count(*)"
     : plan.aggregation === "distinct_count" ? `count(DISTINCT ${quoteIdentifier(plan.measure)})`
       : `${plan.aggregation}(${quoteIdentifier(plan.measure)})`;
@@ -59,7 +75,7 @@ export function compilePlan(plan, fields) {
     "FROM dataset",
     where.length ? `WHERE ${where.join(" AND ")}` : "",
     dimension ? `GROUP BY ${dimension}` : "",
-    dimension ? `ORDER BY value ${plan.order === "asc" ? "ASC" : "DESC"}, category ASC` : "ORDER BY value DESC",
+    dimension ? `ORDER BY ${grainActive ? "category ASC" : `value ${plan.order === "asc" ? "ASC" : "DESC"}, category ASC`}` : "ORDER BY value DESC",
     `LIMIT ${plan.limit || 100}`,
   ].filter(Boolean).join("\n");
 }

@@ -11,7 +11,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:browser": "playwright test"
+    "test:browser": "playwright test",
+    "test:catalog-health": "RUN_HEALTH=1 playwright test --grep @health"
   },
   "dependencies": {
     "@duckdb/duckdb-wasm": "1.32.0",

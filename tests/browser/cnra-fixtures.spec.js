@@ -7,6 +7,24 @@ const fixtures = [
 ];
 
 test("opens a CNRA starter inside the guide", async ({ page }) => {
+  // Resolve the starter deterministically instead of depending on the live CNRA API.
+  await page.route(/\/api\/1\/metastore\//, (route) => route.fulfill({ status: 404, body: "not found" }));
+  await page.route(/\/api\/3\/action\/package_show/, (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      success: true,
+      result: {
+        id: "pgwl",
+        name: "periodic-groundwater-level-measurements",
+        title: "Periodic Groundwater Level Measurements",
+        notes: "Groundwater level measurements from monitoring stations.",
+        organization: { title: "California Natural Resources Agency" },
+        resources: [{ id: "stations", name: "Stations", url: "https://data.cnra.ca.gov/dataset/pgwl/stations.csv", format: "CSV" }],
+      },
+    }),
+  }));
+
   await page.goto("/");
   await page.getByRole("link", { name: "Periodic Groundwater Level Measurements" }).click();
   await expect(page.getByRole("heading", { name: /Periodic Groundwater Level Measurements/ })).toBeVisible();
