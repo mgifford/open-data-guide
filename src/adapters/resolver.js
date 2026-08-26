@@ -18,7 +18,7 @@ export function inferFormat(url, declared = "") {
   return [...SUPPORTED_FORMATS].find((format) => path.endsWith(`.${format}`)) || "";
 }
 
-function normalizeResource(resource, index = 0) {
+function normalizeResource(resource, index = 0, catalogUrl = "") {
   const url = valueOf(resource.downloadURL || resource.accessURL || resource.url);
   const format = inferFormat(url, valueOf(resource.format || resource.mediaType).split("/").pop());
   return {
@@ -28,6 +28,7 @@ function normalizeResource(resource, index = 0) {
     format,
     mediaType: valueOf(resource.mediaType || resource.mimetype),
     dataDictionaryUrl: valueOf(resource.describedBy),
+    catalogUrl,
     datastoreActive: resource.datastore_active === true || resource.datastoreActive === true,
     datastoreId: valueOf(resource.id || resource.identifier),
     sizeBytes: Number(resource.size || resource.size_bytes || 0) || null,
@@ -51,7 +52,8 @@ function normalizedDataset(values) {
 }
 
 export function normalizeDkan(data, sourceUrl) {
-  const resources = (data.distribution || []).map(normalizeResource).filter((item) => item.url);
+  const catalogUrl = new URL(sourceUrl).origin;
+  const resources = (data.distribution || []).map((resource, index) => normalizeResource(resource, index, catalogUrl)).filter((item) => item.url);
   return {
     ...normalizedDataset({ connectorId: "dkan", catalogUrl: new URL(sourceUrl).origin, modified: data.modified }),
     key: `dkan:${data.identifier || sourceUrl}`,
@@ -68,7 +70,8 @@ export function normalizeDkan(data, sourceUrl) {
 }
 
 export function normalizeCkan(data, sourceUrl) {
-  const resources = arrayOf(data.resources).map(normalizeResource).filter((item) => item.url);
+  const catalogUrl = new URL(sourceUrl).origin;
+  const resources = arrayOf(data.resources).map((resource, index) => normalizeResource(resource, index, catalogUrl)).filter((item) => item.url);
   return {
     ...normalizedDataset({
       connectorId: "ckan",

@@ -28,6 +28,7 @@ describe("dataset adapters", () => {
     }, "https://example.gov/dataset/abc");
     expect(dataset.platform).toBe("CKAN");
     expect(dataset.resources[0].format).toBe("csv");
+    expect(dataset.resources[0].catalogUrl).toBe("https://example.gov");
   });
 
   it("keeps catalog implementation details behind normalized records", () => {

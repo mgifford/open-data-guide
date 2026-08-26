@@ -70,6 +70,15 @@ describe("related dataset matching", () => {
     expect(validateJoinCandidate(evidence, { confirmed: true })).toBe(true);
   });
 
+  it("blocks joins with no bounded key overlap", () => {
+    const evidence = analyzeJoinCandidate(
+      { fields: [{ name: "key", type: "VARCHAR" }], rows: [{ key: "a" }] },
+      { fields: [{ name: "key", type: "VARCHAR" }], rows: [{ key: "b" }] },
+      "key", "key",
+    );
+    expect(() => validateJoinCandidate(evidence, { confirmed: true })).toThrow(/no overlapping/);
+  });
+
   it("limits dense chart display while retaining the full result list", () => {
     const rows = Array.from({ length: 80 }, (_, index) => ({ category: `Project ${index}`, value: index }));
     expect(chartRowsFor(rows)).toHaveLength(15);

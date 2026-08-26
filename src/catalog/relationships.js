@@ -54,7 +54,38 @@ export function analyzeJoinCandidate(source, target, sourceField, targetField) {
 
 export function validateJoinCandidate(evidence, { confirmed = false } = {}) {
   if (!evidence?.compatibleTypes) throw new Error("Join keys have incompatible types.");
+  if (!evidence.normalizedOverlap) throw new Error("Join keys have no overlapping values in the bounded preview.");
   if (evidence.expectedCardinality === "many-to-many-risk") throw new Error("Many-to-many joins are blocked because they can multiply rows.");
   if (!confirmed) throw new Error("Join requires explicit user confirmation after reviewing key evidence.");
   return true;
+}
+
+export function joinPreview(source, target, sourceField, targetField) {
+  const targetKeys = new Map();
+  (target.rows || []).forEach((row, index) => {
+    const key = comparable(row[targetField]);
+    if (!key) return;
+    if (!targetKeys.has(key)) targetKeys.set(key, []);
+    targetKeys.get(key).push(index);
+  });
+  const matchedTargetIndexes = new Set();
+  let matchedSourceRows = 0;
+  let unmatchedSourceRows = 0;
+  (source.rows || []).forEach((row) => {
+    const matches = targetKeys.get(comparable(row[sourceField])) || [];
+    if (matches.length) {
+      matchedSourceRows += 1;
+      matches.forEach((index) => matchedTargetIndexes.add(index));
+    } else {
+      unmatchedSourceRows += 1;
+    }
+  });
+  return {
+    sourceRowsReviewed: (source.rows || []).length,
+    targetRowsReviewed: (target.rows || []).length,
+    matchedSourceRows,
+    unmatchedSourceRows,
+    matchedTargetRows: matchedTargetIndexes.size,
+    unmatchedTargetRows: (target.rows || []).length - matchedTargetIndexes.size,
+  };
 }

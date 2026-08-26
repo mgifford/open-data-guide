@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { datastoreRequest, datastoreResource, queryDataStore, runDataStorePlan } from "../src/data/datastore.js";
 
 describe("CKAN DataStore adapter", () => {
-  const resource = { datastoreActive: true, datastoreId: "resource-1", url: "https://catalog.example.gov/download/data.csv" };
+  const resource = { datastoreActive: true, datastoreId: "resource-1", catalogUrl: "https://catalog.example.gov", url: "https://files.example.net/download/data.csv" };
 
   it("builds bounded, parameterized DataStore requests", () => {
     expect(datastoreResource(resource)).toBe(true);
@@ -24,6 +24,7 @@ describe("CKAN DataStore adapter", () => {
     const signal = AbortSignal.timeout(1000);
     await expect(queryDataStore(resource, {}, { signal })).resolves.toMatchObject({ rows: [{ county: "Alameda" }], total: 1 });
     expect(fetchMock.mock.calls[0][1].signal).toBe(signal);
+    expect(fetchMock.mock.calls[0][0].href).toContain("datastore_search");
     fetchMock.mockRestore();
   });
 
@@ -40,6 +41,21 @@ describe("CKAN DataStore adapter", () => {
     });
     await expect(runDataStorePlan(resource, { aggregation: "sum", measure: "amount", dimension: "county", limit: 10 })).resolves.toMatchObject({ rows: [{ category: "Alameda", value: 15 }, { category: "Butte", value: 7 }], scanned: 3, truncated: false });
     expect(calls).toBe(1);
+    fetchMock.mockRestore();
+  });
+
+  it("averages the two middle values for an even median", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ success: true, result: { records: [{ amount: 1 }, { amount: 3 }, { amount: 9 }, { amount: 11 }], total: 4, fields: [] } })));
+    await expect(runDataStorePlan(resource, { aggregation: "median", measure: "amount", limit: 10 })).resolves.toMatchObject({ rows: [{ value: 6 }] });
+    fetchMock.mockRestore();
+  });
+
+  it("calculates an even-sized median using both middle values", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ success: true, result: {
+      records: [{ amount: 1 }, { amount: 3 }, { amount: 9 }, { amount: 11 }], total: 4, fields: [],
+    } })));
+    const result = await runDataStorePlan(resource, { aggregation: "median", measure: "amount", limit: 10 });
+    expect(result.rows).toEqual([{ value: 6 }]);
     fetchMock.mockRestore();
   });
 

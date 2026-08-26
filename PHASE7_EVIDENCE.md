@@ -11,14 +11,13 @@
 
 ## Verification
 
-- Focused Phase 7 tests: 34 passed, covering resource normalization, bounded DataStore requests, exact filters, deterministic aggregation, cancellation, file budgets, and join gates.
-- Full project unit gate: 113 tests passed across 14 files.
-- Full Chromium/Firefox browser gate: 24 tests passed.
+- Focused Phase 7 tests: 37 passed, covering resource normalization, bounded DataStore requests, exact filters, deterministic aggregation, cancellation, file budgets, activity diagnostics, and join gates.
+- Full project unit gate: 119 tests passed across 15 files.
+- Full Chromium/Firefox browser gate: 32 tests passed.
 - Production build passed with the existing DuckDB/Vega large-chunk warning.
 
 ## Known limits
 
-- A controlled fixture comparison between DataStore and file-query paths is still needed for release evidence.
 - Parquet range-efficient reads are not yet implemented.
-- Join UI confirmation and unmatched-row reporting are not yet exposed as a complete user workflow.
-- DataStore remote aggregation is bounded by the configured row budget; truncated results must be disclosed before release.
+- Join confirmation and unmatched-row reporting are limited to bounded preview evidence; no full-data join is implied.
+- DataStore remote aggregation is bounded by the configured row budget; incomplete results are labelled and cannot be charted or exported.

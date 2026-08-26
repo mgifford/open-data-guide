@@ -26,11 +26,12 @@ export function datastoreRequest(resource, plan = {}, offset = 0, limit = DATAST
 
 export async function queryDataStore(resource, plan = {}, options = {}) {
   const limit = Math.min(Math.max(Number(options.limit) || DATASTORE_PAGE_SIZE, 1), DATASTORE_PAGE_SIZE);
-  const response = await fetch(datastoreRequest(resource, plan, options.offset, limit), { signal: options.signal, headers: { Accept: "application/json" } });
+  const request = datastoreRequest(resource, plan, options.offset, limit);
+  const response = await fetch(request, { signal: options.signal, headers: { Accept: "application/json" } });
   if (!response.ok) throw new Error(`CKAN DataStore returned ${response.status} ${response.statusText}`);
   const payload = await response.json();
   if (!payload.success || !payload.result) throw new Error("CKAN DataStore returned no result.");
-  return { rows: payload.result.records || [], total: Number(payload.result.total || 0), fields: payload.result.fields || [], offset: Number(options.offset) || 0, limit };
+  return { rows: payload.result.records || [], total: Number(payload.result.total || 0), fields: payload.result.fields || [], offset: Number(options.offset) || 0, limit, requestUrl: request.href };
 }
 
 function numeric(value) {
@@ -44,9 +45,13 @@ export async function runDataStorePlan(resource, plan = {}, options = {}) {
   let offset = 0;
   let scanned = 0;
   let total = 0;
+  const requests = [];
+  let pageNumber = 0;
   while (scanned < maxRows) {
     if (options.signal?.aborted) throw new DOMException("The DataStore query was cancelled.", "AbortError");
     const page = await queryDataStore(resource, plan, { ...options, offset, limit: Math.min(DATASTORE_PAGE_SIZE, maxRows - scanned) });
+    pageNumber += 1;
+    requests.push({ page: pageNumber, offset: page.offset, limit: page.limit, returned: page.rows.length, url: page.requestUrl });
     total = page.total;
     page.rows.forEach((row) => {
       const key = plan.dimension ? String(row[plan.dimension] ?? "Not supplied") : "__all__";
@@ -71,8 +76,11 @@ export async function runDataStorePlan(resource, plan = {}, options = {}) {
     if (plan.aggregation === "avg") value = values.length ? values.reduce((sum, item) => sum + item, 0) / values.length : null;
     if (plan.aggregation === "min") value = values.length ? values[0] : null;
     if (plan.aggregation === "max") value = values.length ? values.at(-1) : null;
-    if (plan.aggregation === "median") value = values.length ? values[Math.floor(values.length / 2)] : null;
+    if (plan.aggregation === "median") {
+      const middle = Math.floor(values.length / 2);
+      value = values.length ? (values.length % 2 ? values[middle] : (values[middle - 1] + values[middle]) / 2) : null;
+    }
     return plan.dimension ? { category: group.category, value } : { value };
   }).sort((a, b) => (plan.order === "asc" ? 1 : -1) * ((a.value ?? 0) - (b.value ?? 0)));
-  return { rows: rows.slice(0, plan.limit || 100), total, scanned, truncated: scanned < total };
+  return { rows: rows.slice(0, plan.limit || 100), total, scanned, truncated: scanned < total, maxRows, requests };
 }

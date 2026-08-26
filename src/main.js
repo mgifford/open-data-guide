@@ -15,6 +15,8 @@ import { describeResult } from "./render/advisor.js";
 import { downloadText, resultsToCsv, resultsToJson } from "./render/export.js";
 import { shouldRefuseResource } from "./data/ingestion.js";
 import { datastoreResource, runDataStorePlan } from "./data/datastore.js";
+import { createActivityLog } from "./ui/activity.js";
+import { analyzeJoinCandidate, joinPreview, validateJoinCandidate } from "./catalog/relationships.js";
 
 const elements = Object.fromEntries([
   "dataset-form", "dataset-url", "sample-button", "status", "dataset-section", "dataset-heading",
@@ -26,6 +28,9 @@ const elements = Object.fromEntries([
   "provenance", "saved-list", "related-list", "semantic-button", "capability-output",
   "catalog-form", "catalog-url", "catalog-query", "catalog-results", "history-search-form", "history-query", "history-list", "export-button",
   "import-input", "clear-data-button", "storage-summary", "story-text", "export-receipt", "clarification-output",
+  "cancel-resource-button", "resource-status", "cancel-query-button", "query-status",
+  "activity-list", "copy-diagnostics-button", "download-diagnostics-button", "clear-diagnostics-button", "diagnostics-status",
+  "join-section", "join-form", "join-target", "join-source-field", "join-target-field", "join-evidence", "join-confirmation", "join-confirm-checkbox", "join-confirm-button", "join-result",
 ].map((id) => [id, document.getElementById(id)]));
 
 let currentDataset = null;
@@ -44,6 +49,61 @@ let plannerAbortController = null;
 let activePlan = null;
 let activePlanner = null;
 let currentResult = null;
+let resourceAbortController = null;
+let queryAbortController = null;
+let joinTargetDataset = null;
+let joinEvidence = null;
+
+function renderActivity(events) {
+  elements["activity-list"].replaceChildren();
+  events.slice().reverse().forEach((event) => {
+    const item = document.createElement("li");
+    const summary = document.createElement("span");
+    summary.textContent = `${new Date(event.timestamp).toLocaleTimeString()} ${event.level.toUpperCase()} ${event.operation}.${event.stage}`;
+    const detail = document.createElement("details");
+    const disclosure = document.createElement("summary");
+    disclosure.textContent = "Details";
+    detail.append(disclosure);
+    detail.addEventListener("toggle", () => {
+      if (detail.open && detail.children.length === 1) {
+        const message = document.createElement("p");
+        message.textContent = event.message;
+        detail.append(message);
+      }
+    });
+    item.append(summary, " ", detail);
+    elements["activity-list"].append(item);
+  });
+}
+
+const activity = createActivityLog({ onChange: renderActivity });
+
+function diagnosticsText() {
+  return JSON.stringify(activity.list(), null, 2);
+}
+
+elements["copy-diagnostics-button"].addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(diagnosticsText());
+    setStatus("Diagnostics copied for this session.", "info", elements["diagnostics-status"]);
+  } catch (error) {
+    setStatus(`Diagnostics could not be copied: ${error.message}`, "error", elements["diagnostics-status"]);
+  }
+});
+
+elements["download-diagnostics-button"].addEventListener("click", () => {
+  const blob = new Blob([diagnosticsText()], { type: "application/json" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = "open-data-guide-diagnostics.json";
+  link.click();
+  URL.revokeObjectURL(link.href);
+});
+
+elements["clear-diagnostics-button"].addEventListener("click", () => {
+  activity.clear();
+  setStatus("Session diagnostics cleared.", "info", elements["diagnostics-status"], { operation: "diagnostics", stage: "cleared" });
+});
 
 function resetPlannerProvenance() {
   activePlannerProvenance = { modelBackend: "deterministic", modelIdentifier: "", modelVersion: "" };
@@ -94,9 +154,11 @@ function validateCurrentControls() {
   }
 }
 
-function setStatus(message, kind = "info") {
-  elements.status.textContent = message;
-  elements.status.dataset.kind = kind;
+function setStatus(message, kind = "info", target = elements.status, meta = {}) {
+  target.textContent = message;
+  target.dataset.kind = kind;
+  target.setAttribute("role", kind === "error" ? "alert" : "status");
+  activity.add({ level: kind === "error" ? "error" : "info", operation: meta.operation || target.id || "application", stage: meta.stage || (kind === "error" ? "failed" : "update"), message, details: meta.details || {} });
 }
 
 function clearStatus() {
@@ -386,6 +448,18 @@ async function updateResourceWarning() {
   elements["size-warning"].textContent = "";
   elements["load-resource-button"].disabled = false;
   if (!currentResource) return;
+  if (datastoreResource(currentResource)) {
+    elements["size-warning"].hidden = false;
+    elements["size-warning"].textContent = "This resource exposes CKAN DataStore. Open Data Guide will request bounded API pages instead of downloading the complete source file.";
+    return;
+  }
+  const declaredBytes = Number(currentResource.sizeBytes);
+  if (shouldRefuseResource(declaredBytes)) {
+    elements["load-resource-button"].disabled = true;
+    elements["size-warning"].hidden = false;
+    elements["size-warning"].textContent = `The publisher reports that this resource is approximately ${(declaredBytes / 1_000_000).toFixed(0)} MB. Automatic browser loading is refused above 500 MB.`;
+    return;
+  }
   if (/very large file/i.test(currentDataset.description || "")) {
     elements["size-warning"].hidden = false;
     elements["size-warning"].textContent = "The publisher identifies this as a very large file. Loading it may use substantial bandwidth and browser memory. Consider a smaller resource or portal API for initial exploration.";
@@ -529,31 +603,57 @@ elements["sample-button"].addEventListener("click", () => {
   inspectUrl(sampleUrl);
 });
 
+elements["cancel-resource-button"].addEventListener("click", () => resourceAbortController?.abort());
+
 elements["load-resource-button"].addEventListener("click", async () => {
   currentResource = selectedResource();
   if (!currentResource) return;
-  setStatus("Starting DuckDB-Wasm and reading the resource. Large files may take time...");
+  resourceAbortController = new AbortController();
+  elements["cancel-resource-button"].hidden = false;
+  elements["load-resource-button"].disabled = true;
+  const remote = datastoreResource(currentResource);
+  setStatus(remote ? "Loading a bounded schema and preview through CKAN DataStore..." : "Starting DuckDB-Wasm and reading the resource. Large files may take time...", "info", elements["resource-status"]);
   try {
-    const [profile, dictionary] = await Promise.all([loadResource(currentResource), loadDataDictionary(currentResource)]);
+    const [profile, dictionary] = await Promise.all([loadResource(currentResource, { signal: resourceAbortController.signal }), loadDataDictionary(currentResource, { signal: resourceAbortController.signal })]);
     const definitions = new Map(dictionary.flatMap((field) => [
       [String(field.name || "").toLowerCase(), field.description],
       [String(field.title || "").toLowerCase(), field.description],
     ]));
     profile.fields = profile.fields.map((field) => ({ ...field, description: definitions.get(field.name.toLowerCase()) || "" }));
-    currentDataset = { ...currentDataset, fields: profile.fields, selectedResource: currentResource };
+    currentDataset = {
+      ...currentDataset,
+      fields: profile.fields,
+      selectedResource: currentResource,
+      joinSnapshot: {
+        fields: profile.fields.map((field) => ({ name: field.name, type: field.type, semanticRole: field.semanticRole || "" })),
+        rows: profile.preview.slice(0, 100),
+        rowLimit: 100,
+        totalRows: profile.quality?.rowCount ?? null,
+        resourceId: currentResource.id,
+        resourceUrl: currentResource.url,
+        capturedAt: new Date().toISOString(),
+      },
+    };
     if (profile.sourceDigest) currentDataset.sourceDigest = profile.sourceDigest;
     renderProfile(profile);
+    await refreshSaved();
     if (pendingHistoryRecord) {
       const stale = sourceChanged(currentDataset, pendingHistoryRecord);
       setStatus(stale
         ? "This source or schema changed since the saved analysis. Review the fields and query plan before running it."
-        : "The saved analysis source is unchanged. Review the fields and query plan before running it.");
+        : "The saved analysis source is unchanged. Review the fields and query plan before running it.", "info", elements["resource-status"]);
       pendingHistoryRecord = null;
     } else {
-      setStatus("Resource loaded. The preview, fields, and question builder are ready.");
+      setStatus("Resource loaded. The preview, fields, and question builder are ready.", "info", elements["resource-status"]);
     }
   } catch (error) {
-    setStatus(`The resource could not be loaded: ${error.message}. Check CORS support and file size.`, "error");
+    const cancelled = error.name === "AbortError" || resourceAbortController.signal.aborted;
+    setStatus(cancelled ? "Resource loading cancelled. No analysis was run." : `The resource could not be loaded: ${error.message}. Check CORS support and file size.`, cancelled ? "info" : "error", elements["resource-status"]);
+  } finally {
+    resourceAbortController = null;
+    elements["cancel-resource-button"].hidden = true;
+    elements["load-resource-button"].disabled = false;
+    updateResourceWarning();
   }
 });
 
@@ -582,30 +682,40 @@ elements["question-form"].addEventListener("submit", (event) => {
   validateCurrentControls();
 });
 
+elements["cancel-query-button"].addEventListener("click", () => queryAbortController?.abort());
+
 elements["plan-form"].addEventListener("submit", async (event) => {
   event.preventDefault();
   const plan = controlsPlan();
   activePlan = plan;
   try {
     const sql = compilePlan(plan, currentFields);
-    setStatus(datastoreResource(currentResource) ? "Running the validated query through the CKAN DataStore..." : "Running the validated query in DuckDB-Wasm...");
     const remote = datastoreResource(currentResource);
-    const result = remote ? await runDataStorePlan(currentResource, plan) : { rows: await runQuery(sql), total: null, scanned: null, truncated: false };
+    queryAbortController = new AbortController();
+    elements["run-plan-button"].disabled = true;
+    elements["cancel-query-button"].hidden = !remote;
+    setStatus(remote ? "Running the validated query through the CKAN DataStore..." : "Running the validated query in DuckDB-Wasm...", "info", elements["query-status"]);
+    const result = remote ? await runDataStorePlan(currentResource, plan, { signal: queryAbortController.signal }) : { rows: await runQuery(sql), total: null, scanned: null, truncated: false, requests: [], maxRows: null };
     const rows = result.rows;
-    currentResult = { rows, plan, sql, vegaLiteSpec: null, remote, total: result.total, scanned: result.scanned, truncated: result.truncated };
+    const remoteProvenance = remote ? { catalogOrigin: currentResource.catalogUrl, resourceId: currentResource.datastoreId, maxRows: result.maxRows, totalRowsReported: result.total, rowsScanned: result.scanned, truncated: result.truncated, requests: result.requests } : null;
+    currentResult = { rows, plan, sql, vegaLiteSpec: null, remote, total: result.total, scanned: result.scanned, truncated: result.truncated, remoteProvenance };
     elements["query-output"].hidden = false;
     renderSchematic(elements["schematic-view"], currentFields, currentQualities, currentResource);
-    elements["result-explanation"].textContent = `${describeResult(plan, { kind: plan.dimension ? "bar" : "table" }, rows.length, rows.length)}${result.truncated ? ` The remote result was limited to ${result.scanned.toLocaleString()} rows of ${result.total.toLocaleString()} by the browser transfer budget; refine the filters before relying on totals.` : ""}`;
-    elements["story-text"].textContent = resultStory(rows, plan);
-    renderTable(elements["result-table"], rows, `Result for: ${elements.question.value}`);
-    currentResult.vegaLiteSpec = await renderChart(elements.chart, rows, plan, currentFields);
-    elements["sql-output"].textContent = remote ? `CKAN DataStore request for resource ${currentResource.id}; filters, projections, pagination, and aggregation were executed through the documented API.` : sql;
+    elements["result-explanation"].textContent = result.truncated ? `Incomplete preview only. The row budget stopped this query after ${result.scanned.toLocaleString()} of ${result.total.toLocaleString()} rows. Narrow the filters before interpreting or exporting an aggregate.` : describeResult(plan, { kind: plan.dimension ? "bar" : "table" }, rows.length, rows.length);
+    elements["story-text"].textContent = result.truncated ? "No insight is generated from this incomplete aggregate." : resultStory(rows, plan);
+    renderTable(elements["result-table"], rows, `${result.truncated ? "Incomplete preview" : "Result"} for: ${elements.question.value}`);
+    currentResult.vegaLiteSpec = result.truncated ? null : await renderChart(elements.chart, rows, plan, currentFields);
+    elements["download-csv-button"].disabled = result.truncated;
+    elements["download-json-button"].disabled = result.truncated;
+    elements["download-spec-button"].disabled = result.truncated || !currentResult.vegaLiteSpec;
+    elements["sql-output"].textContent = remote ? JSON.stringify(remoteProvenance, null, 2) : sql;
     metadataList(elements.provenance, [
       ["Dataset", currentDataset.title],
       ["Resource", currentResource.title],
       ["Source URL", currentResource.url],
       ["Fields used", [plan.dimension, plan.measure].filter(Boolean).join(", ") || "No named fields"],
       ["Rows returned", String(rows.length)],
+      ...(remote ? [["Rows scanned", String(result.scanned)], ["Remote result truncated", result.truncated ? "Yes; refine filters" : "No"]] : []),
       ...(remote ? [["Rows scanned", String(result.scanned)], ["Remote result truncated", result.truncated ? "Yes; refine filters" : "No"]] : []),
       ["Planning backend", activePlannerProvenance.modelBackend],
       ["Model identity", activePlannerProvenance.modelBackend === "deterministic" ? "Not applicable" : activePlannerProvenance.modelIdentifier || "Not disclosed by browser"],
@@ -634,6 +744,8 @@ elements["plan-form"].addEventListener("submit", async (event) => {
       rowsExcluded: null,
       exclusionReasons: [],
       visualizationIntent: plan.dimension ? "grouped" : "table",
+      incomplete: result.truncated,
+      remoteProvenance,
       vegaLiteSpec: currentResult.vegaLiteSpec,
       narrative: elements["result-explanation"].textContent,
       modelBackend: activePlannerProvenance.modelBackend,
@@ -644,9 +756,14 @@ elements["plan-form"].addEventListener("submit", async (event) => {
     });
     await refreshHistory();
     await refreshStorageSummary();
-    setStatus(datastoreResource(currentResource) ? "Query complete. Review the table and the documented DataStore request." : "Query complete. Review the table, chart, and SQL.");
+    setStatus(result.truncated ? "Remote query stopped at the row budget. Charting and exports are disabled until the query is narrowed." : remote ? "Query complete. Review the table and exact DataStore pagination provenance." : "Query complete. Review the table, chart, and SQL.", result.truncated ? "error" : "info", elements["query-status"]);
   } catch (error) {
-    setStatus(error.message, "error");
+    const cancelled = error.name === "AbortError" || queryAbortController?.signal.aborted;
+    setStatus(cancelled ? "Remote query cancelled. No result was saved." : error.message, cancelled ? "info" : "error", elements["query-status"]);
+  } finally {
+    queryAbortController = null;
+    elements["cancel-query-button"].hidden = true;
+    validateCurrentControls();
   }
 });
 
@@ -661,16 +778,24 @@ function resultMetadata() {
 
 elements["download-csv-button"].addEventListener("click", () => {
   if (!currentResult) return;
+  if (currentResult.truncated) {
+    setStatus("Export blocked because this aggregate is incomplete. Narrow the remote query first.", "error", elements["query-status"]);
+    return;
+  }
   downloadText("open-data-guide-results.csv", resultsToCsv(currentResult.rows), "text/csv;charset=utf-8");
 });
 
 elements["download-json-button"].addEventListener("click", () => {
   if (!currentResult) return;
+  if (currentResult.truncated) {
+    setStatus("Export blocked because this aggregate is incomplete. Narrow the remote query first.", "error", elements["query-status"]);
+    return;
+  }
   downloadText("open-data-guide-results.json", resultsToJson({ ...currentResult, metadata: resultMetadata() }), "application/json;charset=utf-8");
 });
 
 elements["download-spec-button"].addEventListener("click", () => {
-  if (!currentResult?.vegaLiteSpec) return;
+  if (!currentResult?.vegaLiteSpec || currentResult.truncated) return;
   downloadText("open-data-guide-chart.vl.json", JSON.stringify(currentResult.vegaLiteSpec, null, 2), "application/json;charset=utf-8");
 });
 
@@ -712,10 +837,84 @@ function datasetCard(dataset) {
     await removeDataset(dataset.key);
     await refreshSaved();
   });
-  actions.append(inspect, source, remove);
+  actions.append(inspect, source);
+  if (currentDataset?.joinSnapshot?.rows?.length && dataset.joinSnapshot?.rows?.length && dataset.key !== currentDataset.key) {
+    const review = document.createElement("button");
+    review.type = "button";
+    review.className = "button-secondary";
+    review.textContent = "Review possible join";
+    review.addEventListener("click", () => openJoinReview(dataset));
+    actions.append(review);
+  }
+  actions.append(remove);
   article.append(heading, detail, actions);
   return article;
 }
+
+function fillJoinFields(select, fields = []) {
+  select.replaceChildren();
+  fields.forEach((field) => {
+    const option = document.createElement("option");
+    option.value = field.name;
+    option.textContent = `${field.name} (${field.type || "unknown"})`;
+    select.append(option);
+  });
+}
+
+function openJoinReview(dataset) {
+  joinTargetDataset = dataset;
+  joinEvidence = null;
+  elements["join-section"].hidden = false;
+  elements["join-target"].textContent = `Current dataset: ${currentDataset.title}. Saved dataset: ${dataset.title}.`;
+  fillJoinFields(elements["join-source-field"], currentDataset.joinSnapshot.fields);
+  fillJoinFields(elements["join-target-field"], dataset.joinSnapshot.fields);
+  const shared = currentDataset.joinSnapshot.fields.find((field) => dataset.joinSnapshot.fields.some((candidate) => candidate.name.toLowerCase() === field.name.toLowerCase()));
+  if (shared) {
+    elements["join-source-field"].value = shared.name;
+    elements["join-target-field"].value = dataset.joinSnapshot.fields.find((field) => field.name.toLowerCase() === shared.name.toLowerCase()).name;
+  }
+  elements["join-evidence"].replaceChildren();
+  elements["join-result"].replaceChildren();
+  elements["join-confirmation"].hidden = true;
+  elements["join-confirm-checkbox"].checked = false;
+  elements["join-confirm-button"].disabled = true;
+  elements["join-section"].scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+elements["join-form"].addEventListener("submit", (event) => {
+  event.preventDefault();
+  if (!joinTargetDataset) return;
+  const sourceField = elements["join-source-field"].value;
+  const targetField = elements["join-target-field"].value;
+  joinEvidence = analyzeJoinCandidate(currentDataset.joinSnapshot, joinTargetDataset.joinSnapshot, sourceField, targetField);
+  const counts = joinPreview(currentDataset.joinSnapshot, joinTargetDataset.joinSnapshot, sourceField, targetField);
+  const blocked = !joinEvidence.compatibleTypes || !joinEvidence.normalizedOverlap || joinEvidence.expectedCardinality === "many-to-many-risk";
+  const list = document.createElement("dl");
+  metadataList(list, [["Source key", `${sourceField} (${joinEvidence.sourceType})`], ["Target key", `${targetField} (${joinEvidence.targetType})`], ["Normalized values overlapping", String(joinEvidence.normalizedOverlap)], ["Expected cardinality", joinEvidence.expectedCardinality], ["Unmatched source preview rows", String(counts.unmatchedSourceRows)], ["Unmatched target preview rows", String(counts.unmatchedTargetRows)]]);
+  const note = document.createElement("p");
+  note.textContent = blocked ? `Join blocked. ${joinEvidence.reasons.join("; ")}.` : `Review required. ${joinEvidence.reasons.join("; ")}.`;
+  elements["join-evidence"].replaceChildren(note, list);
+  elements["join-confirmation"].hidden = blocked;
+  elements["join-confirm-button"].disabled = true;
+});
+
+elements["join-confirm-checkbox"].addEventListener("change", () => {
+  elements["join-confirm-button"].disabled = !elements["join-confirm-checkbox"].checked;
+});
+
+elements["join-confirm-button"].addEventListener("click", async () => {
+  if (!joinTargetDataset || !joinEvidence) return;
+  validateJoinCandidate(joinEvidence, { confirmed: true });
+  const counts = joinPreview(currentDataset.joinSnapshot, joinTargetDataset.joinSnapshot, joinEvidence.sourceField, joinEvidence.targetField);
+  const provenance = { id: crypto.randomUUID(), version: 1, sourceDatasetKey: currentDataset.key, targetDatasetKey: joinTargetDataset.key, sourceResourceUrl: currentDataset.joinSnapshot.resourceUrl, targetResourceUrl: joinTargetDataset.joinSnapshot.resourceUrl, sourceField: joinEvidence.sourceField, targetField: joinEvidence.targetField, expectedCardinality: joinEvidence.expectedCardinality, scope: "bounded-preview", ...counts, confirmedAt: new Date().toISOString() };
+  await putRecord("relationships", provenance);
+  const heading = document.createElement("h3");
+  heading.textContent = "Confirmed bounded join review";
+  const note = document.createElement("p");
+  note.textContent = "The relationship marker and unmatched-row counts were saved. This does not execute or endorse a full-data join.";
+  elements["join-result"].replaceChildren(heading, note);
+  await refreshStorageSummary();
+});
 
 function renderRelated(results = null, semantic = false) {
   elements["related-list"].replaceChildren();

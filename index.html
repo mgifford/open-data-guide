@@ -82,7 +82,11 @@
         <dl id="dataset-metadata" class="metadata"></dl>
         <div id="resource-control"></div>
         <div id="size-warning" class="notice" hidden></div>
-        <button id="load-resource-button" type="button">Load selected resource</button>
+        <div class="operation-actions">
+          <button id="load-resource-button" type="button">Load selected resource</button>
+          <button id="cancel-resource-button" class="button-secondary" type="button" hidden>Cancel resource loading</button>
+        </div>
+        <div id="resource-status" class="status" role="status" aria-live="polite"></div>
       </section>
 
       <section id="explore-section" class="panel" aria-labelledby="explore-heading" hidden>
@@ -128,7 +132,11 @@
             <select id="measure" name="measure"></select>
             <label for="dimension">Group by</label>
             <select id="dimension" name="dimension"></select>
-            <button id="run-plan-button" type="submit">Run verified query</button>
+            <div class="operation-actions">
+              <button id="run-plan-button" type="submit">Run verified query</button>
+              <button id="cancel-query-button" class="button-secondary" type="button" hidden>Cancel remote query</button>
+            </div>
+            <div id="query-status" class="status" role="status" aria-live="polite"></div>
           </fieldset>
         </form>
         <div id="query-output" hidden>
@@ -168,6 +176,25 @@
         <div id="related-list" aria-live="polite"></div>
       </section>
 
+      <section id="join-section" class="panel" aria-labelledby="join-heading" hidden>
+        <h2 id="join-heading">Review a possible dataset join</h2>
+        <p>This review uses up to 100 preview rows saved with each dataset marker. It does not approve a full-data join.</p>
+        <form id="join-form">
+          <p id="join-target"></p>
+          <label for="join-source-field">Field in the current dataset</label>
+          <select id="join-source-field"></select>
+          <label for="join-target-field">Field in the saved dataset</label>
+          <select id="join-target-field"></select>
+          <button type="submit">Review join keys</button>
+        </form>
+        <div id="join-evidence" aria-live="polite"></div>
+        <div id="join-confirmation" hidden>
+          <label><input id="join-confirm-checkbox" type="checkbox" /> I reviewed the key evidence and understand that this is a bounded preview.</label>
+          <button id="join-confirm-button" type="button" disabled>Confirm bounded join review</button>
+        </div>
+        <div id="join-result"></div>
+      </section>
+
       <section id="history" class="panel" aria-labelledby="history-heading">
         <h2 id="history-heading">Analysis history</h2>
         <form id="history-search-form">
@@ -190,6 +217,19 @@
           <button id="clear-data-button" class="button-secondary" type="button">Delete local application data</button>
         </div>
         <div id="export-receipt" class="status" role="status" aria-live="polite" hidden></div>
+      </section>
+
+      <section id="activity" class="panel" aria-labelledby="activity-heading">
+        <h2 id="activity-heading">Activity and diagnostics</h2>
+        <p>Session events omit dataset rows, model prompts, and request headers.</p>
+        <details>
+          <summary>Show recent activity</summary>
+          <ol id="activity-list"></ol>
+          <button id="copy-diagnostics-button" class="button-secondary" type="button">Copy diagnostics</button>
+          <button id="download-diagnostics-button" class="button-secondary" type="button">Download diagnostics</button>
+          <button id="clear-diagnostics-button" class="button-secondary" type="button">Clear diagnostics</button>
+          <div id="diagnostics-status" class="status" role="status" aria-live="polite"></div>
+        </details>
       </section>
     </main>
 
