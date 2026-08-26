@@ -19,8 +19,8 @@ export function resultsToCsv(rows = []) {
   ].join("\n");
 }
 
-export function resultsToJson({ metadata = {}, plan = {}, sql = "", rows = [], vegaLiteSpec = null } = {}) {
-  return JSON.stringify({ metadata, plan, query: sql, results: rows, vegaLiteSpec }, null, 2);
+export function resultsToJson({ metadata = {}, plan = {}, sql = "", rows = [], vegaLiteSpec = null, remoteProvenance = null, incomplete = false } = {}) {
+  return JSON.stringify({ metadata, plan, query: sql, results: rows, vegaLiteSpec, incomplete, remoteProvenance }, null, 2);
 }
 
 export function downloadText(filename, content, type = "text/plain;charset=utf-8") {

@@ -79,17 +79,18 @@ export async function loadResource(resource, options = {}) {
     });
     return { fields, preview: result.rows, filename: "", sourceDigest: "", quality: { rowCount: result.total, rawValuesRetained: false, remote: true, parseFailures: [] } };
   }
+  const response = await fetch(resource.url, { signal: options.signal });
+  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+  abortCheckForResourceLoading(response.headers.get("content-length"));
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (options.signal?.aborted) throw new DOMException("The resource load was cancelled.", "AbortError");
+  abortCheckForResourceLoading(bytes.byteLength);
   const db = await database();
+  if (options.signal?.aborted) throw new DOMException("The resource load was cancelled.", "AbortError");
   if (!connection) connection = await db.connect();
   const filename = `dataset-${crypto.randomUUID()}.${resource.format}`;
   let sourceProfile = null;
   if (resource.format === "csv") {
-    const response = await fetch(resource.url, { signal: options.signal });
-    if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
-    abortCheckForResourceLoading(response.headers.get("content-length"));
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    if (options.signal?.aborted) throw new DOMException("The resource load was cancelled.", "AbortError");
-    abortCheckForResourceLoading(bytes.byteLength);
     const text = decodeUtf8(bytes);
     sourceProfile = profileRows(text);
     sourceProfile.sourceDigest = await digestText(text);
@@ -98,7 +99,7 @@ export async function loadResource(resource, options = {}) {
     const projection = sourceProfile.fields.map(normalizedSourceExpression).join(", ");
     await connection.query(`CREATE OR REPLACE VIEW dataset AS SELECT ${projection} FROM dataset_raw`);
   } else {
-    await db.registerFileURL(filename, resource.url, duckdb.DuckDBDataProtocol.HTTP, false);
+    await db.registerFileBuffer(filename, bytes);
     await connection.query(`CREATE OR REPLACE VIEW dataset AS SELECT * FROM ${readerFor(resource.format, filename)}`);
   }
   const schema = rowsOf(await connection.query("DESCRIBE SELECT * FROM dataset"));

@@ -2,13 +2,27 @@ function comparable(value) {
   return String(value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+const MISSING_KEYS = new Set(["", "none", "null", "n/a", "na", "not supplied"]);
+
+function joinKey(value) {
+  const normalized = comparable(value);
+  return MISSING_KEYS.has(normalized) ? "" : normalized;
+}
+
+function typeFamily(type) {
+  const normalized = String(type || "").toLowerCase();
+  if (["text", "varchar", "string"].includes(normalized)) return "text";
+  if (/int|decimal|double|float|real|numeric/.test(normalized)) return "numeric";
+  return normalized;
+}
+
 function fieldValues(rows, field) {
   return rows.map((row) => row[field]).filter((value) => value !== null && value !== undefined && value !== "");
 }
 
 function profileField(rows, field) {
   const values = fieldValues(rows, field);
-  const normalized = values.map(comparable);
+  const normalized = values.map(joinKey).filter(Boolean);
   const unique = new Set(normalized);
   return {
     field,
@@ -29,7 +43,7 @@ export function analyzeJoinCandidate(source, target, sourceField, targetField) {
   const targetTypes = target.fields || [];
   const sourceType = sourceTypes.find((field) => field.name === sourceField)?.type || "unknown";
   const targetType = targetTypes.find((field) => field.name === targetField)?.type || "unknown";
-  const compatibleTypes = sourceType === targetType || (sourceType === "unknown" || targetType === "unknown");
+  const compatibleTypes = typeFamily(sourceType) === typeFamily(targetType) || (sourceType === "unknown" || targetType === "unknown");
   const reasons = [];
   if (compatibleTypes) reasons.push("field types are compatible or incomplete");
   if (sourceProfile.uniqueRate >= 0.95 || targetProfile.uniqueRate >= 0.95) reasons.push("at least one side is nearly unique");
@@ -63,7 +77,7 @@ export function validateJoinCandidate(evidence, { confirmed = false } = {}) {
 export function joinPreview(source, target, sourceField, targetField) {
   const targetKeys = new Map();
   (target.rows || []).forEach((row, index) => {
-    const key = comparable(row[targetField]);
+    const key = joinKey(row[targetField]);
     if (!key) return;
     if (!targetKeys.has(key)) targetKeys.set(key, []);
     targetKeys.get(key).push(index);
@@ -72,7 +86,8 @@ export function joinPreview(source, target, sourceField, targetField) {
   let matchedSourceRows = 0;
   let unmatchedSourceRows = 0;
   (source.rows || []).forEach((row) => {
-    const matches = targetKeys.get(comparable(row[sourceField])) || [];
+    const sourceKey = joinKey(row[sourceField]);
+    const matches = sourceKey ? targetKeys.get(sourceKey) || [] : [];
     if (matches.length) {
       matchedSourceRows += 1;
       matches.forEach((index) => matchedTargetIndexes.add(index));

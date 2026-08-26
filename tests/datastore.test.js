@@ -44,6 +44,26 @@ describe("CKAN DataStore adapter", () => {
     fetchMock.mockRestore();
   });
 
+  it("continues across server-capped short pages until the reported total", async () => {
+    const calls = [];
+    const allRows = [{ state: "A" }, { state: "A" }, { state: "B" }, { state: "B" }, { state: "C" }];
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (request) => {
+      const url = new URL(request.url || request);
+      const offset = Number(url.searchParams.get("offset"));
+      const limit = Number(url.searchParams.get("limit"));
+      calls.push({ offset, limit });
+      return new Response(JSON.stringify({ success: true, result: { records: allRows.slice(offset, offset + 2), total: 5, fields: [] } }));
+    });
+    const result = await runDataStorePlan(resource, { aggregation: "count", dimension: "state" }, { maxRows: 100_000 });
+    expect(calls).toHaveLength(3);
+    expect(calls.map((call) => call.offset)).toEqual([0, 2, 4]);
+    expect(calls.every((call) => call.limit === 1000)).toBe(true);
+    expect(result.scanned).toBe(5);
+    expect(result.truncated).toBe(false);
+    expect(result.rows).toEqual([{ category: "A", value: 2 }, { category: "B", value: 2 }, { category: "C", value: 1 }]);
+    fetchMock.mockRestore();
+  });
+
   it("averages the two middle values for an even median", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ success: true, result: { records: [{ amount: 1 }, { amount: 3 }, { amount: 9 }, { amount: 11 }], total: 4, fields: [] } })));
     await expect(runDataStorePlan(resource, { aggregation: "median", measure: "amount", limit: 10 })).resolves.toMatchObject({ rows: [{ value: 6 }] });
@@ -51,11 +71,22 @@ describe("CKAN DataStore adapter", () => {
   });
 
   it("calculates an even-sized median using both middle values", async () => {
-    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ success: true, result: {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(JSON.stringify({ success: true, result: {
       records: [{ amount: 1 }, { amount: 3 }, { amount: 9 }, { amount: 11 }], total: 4, fields: [],
     } })));
     const result = await runDataStorePlan(resource, { aggregation: "median", measure: "amount", limit: 10 });
     expect(result.rows).toEqual([{ value: 6 }]);
+    fetchMock.mockRestore();
+  });
+
+  it("applies local missing-value rules to every numeric aggregation", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(JSON.stringify({ success: true, result: {
+      records: [{ amount: "" }, { amount: "  " }, { amount: "N/A" }, { amount: "None" }, { amount: 4 }], total: 5, fields: [],
+    } })));
+    for (const aggregation of ["avg", "median", "min", "max", "sum"]) {
+      await expect(runDataStorePlan(resource, { aggregation, measure: "amount" })).resolves.toMatchObject({ rows: [{ value: 4 }] });
+    }
+    await expect(runDataStorePlan(resource, { aggregation: "distinct_count", measure: "amount" })).resolves.toMatchObject({ rows: [{ value: 1 }] });
     fetchMock.mockRestore();
   });
 

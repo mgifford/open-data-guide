@@ -156,8 +156,8 @@ function directDataset(url) {
   };
 }
 
-async function fetchJson(url) {
-  const response = await fetch(url, { headers: { Accept: "application/json" } });
+async function fetchJson(url, options = {}) {
+  const response = await fetch(url, { ...options, headers: { Accept: "application/json" } });
   if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
   return response.json();
 }
@@ -238,12 +238,13 @@ export async function searchDkanCatalogPage(catalogUrl, query, options = {}) {
   };
 }
 
-export async function loadDataDictionary(resource) {
+export async function loadDataDictionary(resource, options = {}) {
   if (!resource.dataDictionaryUrl) return [];
   try {
-    const response = await fetchJson(resource.dataDictionaryUrl);
+    const response = await fetchJson(resource.dataDictionaryUrl, { signal: options.signal });
     return response.data?.fields || response.fields || [];
-  } catch {
+  } catch (error) {
+    if (error.name === "AbortError") throw error;
     return [];
   }
 }

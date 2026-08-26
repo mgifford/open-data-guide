@@ -716,7 +716,6 @@ elements["plan-form"].addEventListener("submit", async (event) => {
       ["Fields used", [plan.dimension, plan.measure].filter(Boolean).join(", ") || "No named fields"],
       ["Rows returned", String(rows.length)],
       ...(remote ? [["Rows scanned", String(result.scanned)], ["Remote result truncated", result.truncated ? "Yes; refine filters" : "No"]] : []),
-      ...(remote ? [["Rows scanned", String(result.scanned)], ["Remote result truncated", result.truncated ? "Yes; refine filters" : "No"]] : []),
       ["Planning backend", activePlannerProvenance.modelBackend],
       ["Model identity", activePlannerProvenance.modelBackend === "deterministic" ? "Not applicable" : activePlannerProvenance.modelIdentifier || "Not disclosed by browser"],
       ["Calculated", new Date().toISOString()],
@@ -791,7 +790,7 @@ elements["download-json-button"].addEventListener("click", () => {
     setStatus("Export blocked because this aggregate is incomplete. Narrow the remote query first.", "error", elements["query-status"]);
     return;
   }
-  downloadText("open-data-guide-results.json", resultsToJson({ ...currentResult, metadata: resultMetadata() }), "application/json;charset=utf-8");
+  downloadText("open-data-guide-results.json", resultsToJson({ ...currentResult, incomplete: currentResult.truncated, metadata: resultMetadata() }), "application/json;charset=utf-8");
 });
 
 elements["download-spec-button"].addEventListener("click", () => {
@@ -901,6 +900,14 @@ elements["join-form"].addEventListener("submit", (event) => {
 elements["join-confirm-checkbox"].addEventListener("change", () => {
   elements["join-confirm-button"].disabled = !elements["join-confirm-checkbox"].checked;
 });
+
+[elements["join-source-field"], elements["join-target-field"]].forEach((control) => control.addEventListener("change", () => {
+  joinEvidence = null;
+  elements["join-evidence"].replaceChildren();
+  elements["join-confirmation"].hidden = true;
+  elements["join-confirm-checkbox"].checked = false;
+  elements["join-confirm-button"].disabled = true;
+}));
 
 elements["join-confirm-button"].addEventListener("click", async () => {
   if (!joinTargetDataset || !joinEvidence) return;

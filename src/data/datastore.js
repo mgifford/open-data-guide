@@ -1,4 +1,5 @@
 export const DATASTORE_PAGE_SIZE = 1000;
+const REMOTE_MISSING_VALUES = new Set(["none", "null", "n/a", "na", "not supplied"]);
 
 export function datastoreResource(resource) {
   return Boolean(resource?.datastoreActive && resource.datastoreId);
@@ -34,7 +35,12 @@ export async function queryDataStore(resource, plan = {}, options = {}) {
   return { rows: payload.result.records || [], total: Number(payload.result.total || 0), fields: payload.result.fields || [], offset: Number(options.offset) || 0, limit, requestUrl: request.href };
 }
 
+function isMissing(value) {
+  return value === null || value === undefined || String(value).trim() === "" || REMOTE_MISSING_VALUES.has(String(value).trim().toLowerCase());
+}
+
 function numeric(value) {
+  if (isMissing(value)) return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
 }
@@ -49,6 +55,7 @@ export async function runDataStorePlan(resource, plan = {}, options = {}) {
   let pageNumber = 0;
   while (scanned < maxRows) {
     if (options.signal?.aborted) throw new DOMException("The DataStore query was cancelled.", "AbortError");
+    const previousOffset = offset;
     const page = await queryDataStore(resource, plan, { ...options, offset, limit: Math.min(DATASTORE_PAGE_SIZE, maxRows - scanned) });
     pageNumber += 1;
     requests.push({ page: pageNumber, offset: page.offset, limit: page.limit, returned: page.rows.length, url: page.requestUrl });
@@ -60,13 +67,14 @@ export async function runDataStorePlan(resource, plan = {}, options = {}) {
       if (plan.measure) {
         const value = numeric(row[plan.measure]);
         if (value !== null) group.values.push(value);
-        if (plan.aggregation === "distinct_count") group.distinct.add(String(row[plan.measure]));
+        if (plan.aggregation === "distinct_count" && !isMissing(row[plan.measure])) group.distinct.add(String(row[plan.measure]));
       }
       groups.set(key, group);
     });
     scanned += page.rows.length;
-    if (!page.rows.length || scanned >= page.total || page.rows.length < page.limit) break;
+    if (!page.rows.length || scanned >= page.total) break;
     offset += page.rows.length;
+    if (offset <= previousOffset) break;
   }
   const rows = [...groups.values()].map((group) => {
     const values = group.values.sort((a, b) => a - b);

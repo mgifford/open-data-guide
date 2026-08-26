@@ -79,6 +79,16 @@ describe("related dataset matching", () => {
     expect(() => validateJoinCandidate(evidence, { confirmed: true })).toThrow(/no overlapping/);
   });
 
+  it("accepts compatible text families and ignores missing join keys", () => {
+    const evidence = analyzeJoinCandidate(
+      { fields: [{ name: "key", type: "text" }], rows: [{ key: " A " }, { key: "N/A" }, { key: "  " }] },
+      { fields: [{ name: "key", type: "VARCHAR" }], rows: [{ key: "a" }, { key: "N/A" }, { key: "" }] },
+      "key", "key",
+    );
+    expect(evidence.compatibleTypes).toBe(true);
+    expect(evidence.normalizedOverlap).toBe(1);
+  });
+
   it("limits dense chart display while retaining the full result list", () => {
     const rows = Array.from({ length: 80 }, (_, index) => ({ category: `Project ${index}`, value: index }));
     expect(chartRowsFor(rows)).toHaveLength(15);

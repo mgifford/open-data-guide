@@ -12,7 +12,9 @@ async function mockDataStore(page, { delayed = false, incomplete = false } = {})
     if (url.pathname === "/api/3/action/package_show") return route.fulfill({ json: { success: true, result: { id: "large", title: "Large DataStore resource", resources: [{ id: "resource-1", name: "Large CSV", format: "CSV", url: "https://files.example.net/large.csv", datastore_active: true, size: 900_000_000 }] } } });
     if (url.pathname === "/api/3/action/datastore_search") {
       if (delayed) await new Promise((resolve) => setTimeout(resolve, 1000));
-      return route.fulfill({ json: { success: true, result: { records: [{ state: "CA", amount: 1 }, { state: "NY", amount: 2 }], total: incomplete ? 100_001 : 2, fields: [{ id: "state", type: "text" }, { id: "amount", type: "numeric" }] } } });
+      const offset = Number(url.searchParams.get("offset") || 0);
+      const records = incomplete && offset > 0 ? [] : [{ state: "CA", amount: 1 }, { state: "NY", amount: 2 }];
+      return route.fulfill({ json: { success: true, result: { records, total: incomplete ? 100_001 : 2, fields: [{ id: "state", type: "text" }, { id: "amount", type: "numeric" }] } } });
     }
     return route.fulfill({ status: 404, body: "not found" });
   });
@@ -34,6 +36,8 @@ test("uses the catalog origin and bypasses a large download", async ({ page }) =
   await expect(page.getByRole("table", { name: "Result for: count by state" })).toBeVisible();
   await page.getByText("Query and provenance").click();
   await expect(page.locator("#sql-output")).toContainText("catalog.example.gov");
+  await expect(page.getByText("Rows scanned", { exact: true })).toHaveCount(1);
+  await expect(page.getByText("Remote result truncated", { exact: true })).toHaveCount(1);
   expect(fileRequests()).toBe(0);
 });
 
@@ -46,6 +50,35 @@ test("cancels a DataStore resource load", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Cancel resource loading" })).toBeVisible();
   await page.getByRole("button", { name: "Cancel resource loading" }).click();
   await expect(page.locator("#resource-status")).toContainText("cancelled", { timeout: 4000 });
+});
+
+async function mockDelayedDirectResource(page, extension) {
+  await page.route(`https://files.example.net/data.${extension}`, async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await route.fulfill({ status: 200, body: extension === "json" ? "[{\"state\":\"CA\"}]" : "not parquet" });
+  });
+}
+
+test("cancels JSON resource retrieval", async ({ page }) => {
+  await mockDelayedDirectResource(page, "json");
+  await page.goto("/");
+  await page.getByLabel("Dataset URL").fill("https://files.example.net/data.json");
+  await page.getByRole("button", { name: "Inspect dataset" }).click();
+  await page.getByRole("button", { name: "Load selected resource" }).click();
+  await page.getByRole("button", { name: "Cancel resource loading" }).click();
+  await expect(page.locator("#resource-status")).toContainText("cancelled", { timeout: 4000 });
+  await expect(page.locator("#explore-section")).toBeHidden();
+});
+
+test("cancels Parquet resource retrieval", async ({ page }) => {
+  await mockDelayedDirectResource(page, "parquet");
+  await page.goto("/");
+  await page.getByLabel("Dataset URL").fill("https://files.example.net/data.parquet");
+  await page.getByRole("button", { name: "Inspect dataset" }).click();
+  await page.getByRole("button", { name: "Load selected resource" }).click();
+  await page.getByRole("button", { name: "Cancel resource loading" }).click();
+  await expect(page.locator("#resource-status")).toContainText("cancelled", { timeout: 4000 });
+  await expect(page.locator("#explore-section")).toBeHidden();
 });
 
 test("cancels an in-flight remote query", async ({ page }) => {

@@ -32,6 +32,8 @@ describe("result exports", () => {
       sql: "SELECT state, COUNT(*) FROM data GROUP BY state",
       rows: [{ state: "CA", value: 3 }],
       vegaLiteSpec: { mark: "bar" },
+      remoteProvenance: { catalogOrigin: "https://catalog.example.gov", resourceId: "r1", requests: [{ offset: 0, limit: 1000, returned: 3 }] },
+      incomplete: false,
     });
     const payload = JSON.parse(json);
     expect(payload.metadata.dataset).toBe("Sample");
@@ -39,9 +41,11 @@ describe("result exports", () => {
     expect(payload.query).toContain("GROUP BY");
     expect(payload.results).toEqual([{ state: "CA", value: 3 }]);
     expect(payload.vegaLiteSpec).toEqual({ mark: "bar" });
+    expect(payload.remoteProvenance.requests[0].limit).toBe(1000);
+    expect(payload.incomplete).toBe(false);
   });
 
   it("handles omitted JSON sections with stable defaults", () => {
-    expect(JSON.parse(resultsToJson())).toEqual({ metadata: {}, plan: {}, query: "", results: [], vegaLiteSpec: null });
+    expect(JSON.parse(resultsToJson())).toEqual({ metadata: {}, plan: {}, query: "", results: [], vegaLiteSpec: null, incomplete: false, remoteProvenance: null });
   });
 });
