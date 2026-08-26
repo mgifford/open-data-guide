@@ -1,3 +1,8 @@
+// Remote CKAN pages default to a conservative size to keep browser memory,
+// network usage, and aggregation responsiveness bounded. This is a safe
+// default policy for partial remote analysis, not a universal requirement.
+// Larger pages may be allowed only in explicit user-approved throughput modes
+// with total-scan caps and provenance for any incomplete results.
 export const DATASTORE_PAGE_SIZE = 1000;
 const REMOTE_MISSING_VALUES = new Set(["none", "null", "n/a", "na", "not supplied"]);
 

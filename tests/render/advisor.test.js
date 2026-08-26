@@ -82,6 +82,23 @@ describe("visualization advisor", () => {
     expect(advice.warnings[0]).toContain("reference geometry");
   });
 
+  it("recommends a point map when latitude and longitude fields are available", () => {
+    const plan = { aggregation: "count", dimension: "site_code" };
+    const fields = [
+      { name: "site_code", type: "VARCHAR" },
+      { name: "latitude", type: "DOUBLE", semanticRole: "latitude" },
+      { name: "longitude", type: "DOUBLE", semanticRole: "longitude" },
+    ];
+    const rows = [
+      { category: "A-01", value: 1, latitude: 36.78, longitude: -119.42 },
+      { category: "A-02", value: 1, latitude: 36.84, longitude: -119.31 },
+    ];
+    const advice = adviseChartKind(plan, fields, rows);
+    expect(advice.kind).toBe("map");
+    expect(advice.reason.toLowerCase()).toContain("point map");
+    expect(advice.warnings[0].toLowerCase()).toContain("accessible");
+  });
+
   it("returns table for no dimension", () => {
     const plan = { aggregation: "count" };
     const advice = adviseChartKind(plan, basicFields, [{ value: 1000 }]);

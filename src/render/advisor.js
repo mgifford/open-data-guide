@@ -33,6 +33,19 @@ export function adviseChartKind(plan, fields = [], results = []) {
   const measureField = fieldMap[plan.measure];
   const warnings = [];
   const assumptions = [];
+  const latitudeField = fields.find((field) => field.semanticRole === "latitude" || /^(lat|latitude)$/i.test(field.name));
+  const longitudeField = fields.find((field) => field.semanticRole === "longitude" || /^(lon|long|longitude)$/i.test(field.name));
+
+  if (latitudeField && longitudeField) {
+    assumptions.push(`Point map uses ${latitudeField.name} and ${longitudeField.name} to plot station locations.`);
+    warnings.push("The result table remains the accessible default for this map; use labels and a table alongside the point map.");
+    return {
+      kind: "map",
+      reason: "Point map: plotted by latitude and longitude",
+      warnings,
+      assumptions,
+    };
+  }
 
   // No dimension: summarizing the entire dataset
   if (!plan.dimension) {
