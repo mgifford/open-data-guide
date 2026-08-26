@@ -592,10 +592,10 @@ elements["plan-form"].addEventListener("submit", async (event) => {
     const remote = datastoreResource(currentResource);
     const result = remote ? await runDataStorePlan(currentResource, plan) : { rows: await runQuery(sql), total: null, scanned: null, truncated: false };
     const rows = result.rows;
-    currentResult = { rows, plan, sql, vegaLiteSpec: null };
+    currentResult = { rows, plan, sql, vegaLiteSpec: null, remote, total: result.total, scanned: result.scanned, truncated: result.truncated };
     elements["query-output"].hidden = false;
     renderSchematic(elements["schematic-view"], currentFields, currentQualities, currentResource);
-    elements["result-explanation"].textContent = describeResult(plan, { kind: plan.dimension ? "bar" : "table" }, rows.length, rows.length);
+    elements["result-explanation"].textContent = `${describeResult(plan, { kind: plan.dimension ? "bar" : "table" }, rows.length, rows.length)}${result.truncated ? ` The remote result was limited to ${result.scanned.toLocaleString()} rows of ${result.total.toLocaleString()} by the browser transfer budget; refine the filters before relying on totals.` : ""}`;
     elements["story-text"].textContent = resultStory(rows, plan);
     renderTable(elements["result-table"], rows, `Result for: ${elements.question.value}`);
     currentResult.vegaLiteSpec = await renderChart(elements.chart, rows, plan, currentFields);
@@ -606,6 +606,7 @@ elements["plan-form"].addEventListener("submit", async (event) => {
       ["Source URL", currentResource.url],
       ["Fields used", [plan.dimension, plan.measure].filter(Boolean).join(", ") || "No named fields"],
       ["Rows returned", String(rows.length)],
+      ...(remote ? [["Rows scanned", String(result.scanned)], ["Remote result truncated", result.truncated ? "Yes; refine filters" : "No"]] : []),
       ["Planning backend", activePlannerProvenance.modelBackend],
       ["Model identity", activePlannerProvenance.modelBackend === "deterministic" ? "Not applicable" : activePlannerProvenance.modelIdentifier || "Not disclosed by browser"],
       ["Calculated", new Date().toISOString()],

@@ -43,6 +43,16 @@ describe("CKAN DataStore adapter", () => {
     fetchMock.mockRestore();
   });
 
+  it("matches the deterministic controlled file result", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ success: true, result: {
+      records: [{ state: "CA", amount: 10 }, { state: "CA", amount: 5 }, { state: "NY", amount: 7 }], total: 3, fields: [],
+    } })));
+    const remote = await runDataStorePlan(resource, { aggregation: "sum", measure: "amount", dimension: "state", limit: 10 });
+    const fileExpected = [{ category: "CA", value: 15 }, { category: "NY", value: 7 }];
+    expect(remote.rows).toEqual(fileExpected);
+    fetchMock.mockRestore();
+  });
+
   it("stops before a remote request when cancelled", async () => {
     const controller = new AbortController();
     controller.abort();
