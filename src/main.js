@@ -3,7 +3,9 @@ import { resolveDataset, loadDataDictionary, searchCkanCatalogPage, searchDkanCa
 import {
   saveDataset, listDatasets, removeDataset, listRecords, putRecord, deleteRecord,
   exportWorkspace, importWorkspace, clearWorkspace, storageEstimate,
+  listCustomCatalogs, saveCustomCatalog, removeCustomCatalog,
 } from "./catalog/storage.js";
+import { listBuiltinCatalogs, getBuiltinCatalog, detectCatalog, normalizeCustomCatalog, DEFAULT_CATALOG_ID } from "./catalog/catalogs.js";
 import { catalogSearchTerms, explainRelatedDataset, relatedDatasets } from "./catalog/related.js";
 import { compareFields, historyStatus, sourceChanged } from "./catalog/history.js";
 import { loadResource, runQuery } from "./data/duckdb.js";
@@ -16,17 +18,20 @@ import { downloadText, resultsToCsv, resultsToJson } from "./render/export.js";
 import { shouldRefuseResource } from "./data/ingestion.js";
 import { datastoreResource, runDataStorePlan } from "./data/datastore.js";
 import { createActivityLog } from "./ui/activity.js";
+import { createJourney } from "./ui/journey.js";
 import { analyzeJoinCandidate, joinPreview, validateJoinCandidate } from "./catalog/relationships.js";
 
 const elements = Object.fromEntries([
-  "dataset-form", "dataset-url", "sample-button", "status", "dataset-section", "dataset-heading",
+  "dataset-form", "dataset-url", "sample-button", "local-csv-input", "status", "dataset-section", "dataset-heading",
   "dataset-description", "dataset-metadata", "platform-label", "resource-control", "size-warning",
   "load-resource-button", "save-button", "explore-section", "profile-summary", "fields-table",
   "preview-table", "quality-summary", "question-section", "question-form", "question", "question-interpret-button", "plan-form", "aggregation",
   "measure", "dimension", "run-plan-button", "plan-review", "query-output", "result-explanation", "result-table", "chart", "sql-output", "download-csv-button", "download-json-button", "download-spec-button",
     "schematic-view",
   "provenance", "saved-list", "related-list", "semantic-button", "capability-output",
-  "catalog-form", "catalog-url", "catalog-query", "catalog-results", "history-search-form", "history-query", "history-list", "export-button",
+  "catalog-form", "catalog-select", "catalog-details", "catalog-publisher-link", "catalog-url", "catalog-query", "catalog-results",
+  "custom-catalog-form", "custom-catalog-name", "test-catalog-button", "save-catalog-button", "catalog-detection", "custom-catalog-list",
+  "history-search-form", "history-query", "history-list", "export-button",
   "import-input", "clear-data-button", "storage-summary", "story-text", "export-receipt", "clarification-output",
   "cancel-resource-button", "resource-status", "cancel-query-button", "query-status",
   "activity-list", "copy-diagnostics-button", "download-diagnostics-button", "clear-diagnostics-button", "diagnostics-status",
@@ -39,6 +44,9 @@ let currentFields = [];
 let currentQualities = {};
 let savedDatasets = [];
 let catalogCandidates = [];
+let activeCatalog = null;
+let detectedCustomCatalog = null;
+const journey = createJourney(document.getElementById("journey-nav"));
 let historyRecords = [];
 let dismissedRelated = new Set();
 let pendingHistoryRecord = null;
@@ -281,7 +289,7 @@ function renderCatalogResults(datasets, total, start = 0, query = "", rawCount =
     const details = document.createElement("span");
     const evidence = currentDataset ? explainRelatedDataset(currentDataset, dataset) : { evidence: [] };
     const evidenceText = evidence.evidence.map((item) => `${item.label}: ${item.value}`).join("; ");
-    details.textContent = ` — ${plainText(dataset.description) || "No description supplied."} Evidence: ${evidenceText || "catalog match; review metadata"}. Publisher: ${plainText(dataset.publisher) || "Not supplied"}. Themes: ${(dataset.themes || []).join(", ") || "Not supplied"}. Geography: ${plainText(dataset.spatial) || "Not supplied"}. Time: ${plainText(dataset.temporal) || "Not supplied"}. Source: ${dataset.sourceUrl}`;
+    details.textContent = ` — From catalog: ${dataset.catalogName || dataset.catalogUrl || "Unknown"}. ${plainText(dataset.description) || "No description supplied."} Evidence: ${evidenceText || "catalog match; review metadata"}. Publisher: ${plainText(dataset.publisher) || "Not supplied"}. Themes: ${(dataset.themes || []).join(", ") || "Not supplied"}. Geography: ${plainText(dataset.spatial) || "Not supplied"}. Time: ${plainText(dataset.temporal) || "Not supplied"}. Catalog metadata retrieval does not guarantee this resource is browser-accessible. Source: ${dataset.sourceUrl}`;
     const save = document.createElement("button");
     save.type = "button";
     save.className = "button-secondary compact-button";
@@ -307,20 +315,25 @@ function renderCatalogResults(datasets, total, start = 0, query = "", rawCount =
 
 async function searchCatalog(start = 0) {
   if (start === 0) catalogSeenKeys = new Set();
-  const catalogUrl = elements["catalog-url"].value.trim() || currentDataset?.catalogUrl;
+  if (!activeCatalog) {
+    setStatus("Choose a catalog to search.", "error");
+    return;
+  }
+  const catalogUrl = activeCatalog.baseUrl;
   const query = elements["catalog-query"].value.trim() || catalogSearchTerms(currentDataset || { title: "public data" });
-  if (!catalogUrl || !query) {
-    setStatus("Enter a data catalog URL and search terms, or open a catalog dataset first.", "error");
+  if (!query) {
+    setStatus("Enter search terms, or open a catalog dataset first.", "error");
     return;
   }
   try {
-    const search = currentDataset?.connectorId === "dkan" ? searchDkanCatalogPage : searchCkanCatalogPage;
+    const search = activeCatalog.platform === "DKAN" ? searchDkanCatalogPage : searchCkanCatalogPage;
     const result = await search(catalogUrl, query, { start, rows: 20 });
-    const ranked = result.datasets.map((dataset) => ({ dataset, score: currentDataset ? explainRelatedDataset(currentDataset, dataset).score : 0 })).sort((a, b) => b.score - a.score).map(({ dataset }) => dataset);
+    const tagged = result.datasets.map((dataset) => ({ ...dataset, catalogId: activeCatalog.id, catalogName: activeCatalog.name, catalogUrl }));
+    const ranked = tagged.map((dataset) => ({ dataset, score: currentDataset ? explainRelatedDataset(currentDataset, dataset).score : 0 })).sort((a, b) => b.score - a.score).map(({ dataset }) => dataset);
     renderCatalogResults(ranked, result.total, result.start, query, result.datasets.length);
-    setStatus(`Found ${result.total} catalog matches.`);
+    setStatus(`Found ${result.total} matches in ${activeCatalog.name}.`);
   } catch (error) {
-    setStatus(`Catalog search failed: ${error.message}. Check the URL, CORS, pagination, or rate limit.`, "error");
+    setStatus(`Catalog search of ${activeCatalog.name} failed: ${error.message}. The catalog may block cross-origin browser requests.`, "error");
   }
 }
 
@@ -414,7 +427,7 @@ function renderDataset(dataset) {
   activePlan = null;
   resetPlannerProvenance();
   currentFields = dataset.fields || [];
-  if (dataset.catalogUrl) elements["catalog-url"].value = dataset.catalogUrl;
+  if (dataset.catalogUrl) currentDataset.catalogUrl = dataset.catalogUrl;
   elements["dataset-section"].hidden = false;
   elements["explore-section"].hidden = true;
   elements["question-section"].hidden = true;
@@ -558,6 +571,7 @@ function renderProfile(profile) {
   fillSelect(elements.dimension, currentFields, true);
   elements["explore-section"].hidden = false;
   elements["question-section"].hidden = false;
+  journey.reach(3);
   elements["question"].value = currentFields.some((field) => field.name === "state") ? "count by state" : "count rows";
   elements["question-interpret-button"].disabled = false;
   elements["run-plan-button"].disabled = false;
@@ -592,6 +606,54 @@ function renderProfile(profile) {
   }));
 }
 
+// Local CSV files are read through a blob URL so DuckDB-Wasm parses them in the
+// browser without any network upload.
+function loadLocalCsv(file) {
+  const looksCsv = /\.csv$/i.test(file.name) || /csv|text\/plain/i.test(file.type || "");
+  if (!looksCsv) {
+    setStatus(`Unsupported format: ${file.name}. Local loading currently supports CSV files only.`, "error");
+    return;
+  }
+  const objectUrl = URL.createObjectURL(file);
+  const dataset = {
+    key: `local:${file.name}:${file.size}`,
+    platform: "Local file",
+    connectorId: "local",
+    id: file.name,
+    sourceUrl: "",
+    catalogUrl: "",
+    title: file.name,
+    description: "A CSV file loaded from this computer. It is read and processed in your browser and is not uploaded to any server.",
+    publisher: "This computer",
+    license: "",
+    modified: "",
+    fields: [],
+    resources: [{ id: file.name, title: file.name, url: objectUrl, format: "csv", mediaType: "text/csv", dataDictionaryUrl: "", catalogUrl: "" }],
+    retrievedAt: new Date().toISOString(),
+  };
+  renderDataset(dataset);
+  journey.reach(2);
+  setStatus(`Loaded ${file.name} from this computer. Choose Load selected resource to profile it locally.`, "info");
+}
+
+// Report resolve-time failures with a distinct, plain reason.
+function classifyLoadError(error) {
+  const message = error?.message || String(error);
+  if (/cross-origin|CORS/i.test(message)) return `Cross-origin (CORS) block: the catalog or file did not let this browser read it. ${message}`;
+  if (/HTTP or HTTPS|direct CSV, JSON, or Parquet/i.test(message)) return `Unsupported format or address: ${message}`;
+  if (/Failed to fetch|NetworkError|network/i.test(message)) return `Network failure: the request could not reach the source. Check the address and your connection. ${message}`;
+  return message;
+}
+
+// Report resource-load failures as CORS, unsupported format, network, or size.
+function classifyResourceError(error) {
+  const message = error?.message || String(error);
+  if (/refused|500 MB|too large|memory budget/i.test(message)) return `Size refusal: ${message}`;
+  if (/UTF-8|parse|read_csv|read_json|read_parquet|Invalid|unsupported format/i.test(message)) return `Unsupported or unreadable format: ${message}`;
+  if (/Failed to fetch|NetworkError|load failed/i.test(message)) return `Network or CORS failure: the browser could not fetch this resource. The source may block cross-origin requests or be unavailable. (${message})`;
+  return `The resource could not be loaded: ${message}. Check CORS support and file size.`;
+}
+
 async function inspectUrl(url) {
   if (!url || typeof url !== "string") {
     setStatus("This saved analysis has no original source URL. The question can be reused, but the original source cannot be reopened.", "error");
@@ -601,10 +663,11 @@ async function inspectUrl(url) {
   try {
     const dataset = await resolveDataset(url);
     renderDataset(dataset);
+    journey.reach(2);
     setStatus(`Found ${dataset.title}. Choose a resource to load.`);
     return dataset;
   } catch (error) {
-    setStatus(error.message, "error");
+    setStatus(classifyLoadError(error, url), "error");
     return null;
   }
 }
@@ -614,13 +677,20 @@ elements["dataset-form"].addEventListener("submit", (event) => {
   inspectUrl(elements["dataset-url"].value);
 });
 
+elements["local-csv-input"].addEventListener("change", (event) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  loadLocalCsv(file);
+  event.target.value = "";
+});
+
 elements["sample-button"].addEventListener("click", () => {
   const sampleUrl = new URL("./sample/payments-sample.csv", window.location.href).href;
   elements["dataset-url"].value = sampleUrl;
   inspectUrl(sampleUrl);
 });
 
-document.querySelectorAll(".starter-list a").forEach((link) => link.addEventListener("click", (event) => {
+document.querySelectorAll(".starter-list a:not(.starter-publisher)").forEach((link) => link.addEventListener("click", (event) => {
   event.preventDefault();
   elements["dataset-url"].value = link.href;
   inspectUrl(link.href);
@@ -671,7 +741,7 @@ elements["load-resource-button"].addEventListener("click", async () => {
     }
   } catch (error) {
     const cancelled = error.name === "AbortError" || resourceAbortController.signal.aborted;
-    setStatus(cancelled ? "Resource loading cancelled. No analysis was run." : `The resource could not be loaded: ${error.message}. Check CORS support and file size.`, cancelled ? "info" : "error", elements["resource-status"]);
+    setStatus(cancelled ? "Resource loading cancelled. No analysis was run." : classifyResourceError(error), cancelled ? "info" : "error", elements["resource-status"]);
   } finally {
     resourceAbortController = null;
     elements["cancel-resource-button"].hidden = true;
@@ -717,12 +787,14 @@ elements["plan-form"].addEventListener("submit", async (event) => {
     queryAbortController = new AbortController();
     elements["run-plan-button"].disabled = true;
     elements["cancel-query-button"].hidden = !remote;
+    journey.reach(4);
     setStatus(remote ? "Running the validated query through the CKAN DataStore..." : "Running the validated query in DuckDB-Wasm...", "info", elements["query-status"]);
     const result = remote ? await runDataStorePlan(currentResource, plan, { signal: queryAbortController.signal }) : { rows: await runQuery(sql), total: null, scanned: null, truncated: false, requests: [], maxRows: null };
     const rows = result.rows;
     const remoteProvenance = remote ? { catalogOrigin: currentResource.catalogUrl, resourceId: currentResource.datastoreId, maxRows: result.maxRows, totalRowsReported: result.total, rowsScanned: result.scanned, truncated: result.truncated, requests: result.requests } : null;
     currentResult = { rows, plan, sql, vegaLiteSpec: null, remote, total: result.total, scanned: result.scanned, truncated: result.truncated, remoteProvenance };
     elements["query-output"].hidden = false;
+    journey.reach(5);
     elements["result-explanation"].textContent = result.truncated ? `Incomplete preview only. The row budget stopped this query after ${result.scanned.toLocaleString()} of ${result.total.toLocaleString()} rows. Narrow the filters before interpreting or exporting an aggregate.` : describeResult(plan, { kind: plan.dimension ? "bar" : "table" }, rows.length, rows.length);
     elements["story-text"].textContent = result.truncated ? "No insight is generated from this incomplete aggregate." : resultStory(rows, plan);
     renderTable(elements["result-table"], rows, `${result.truncated ? "Incomplete preview" : "Result"} for: ${elements.question.value}`);
@@ -886,6 +958,7 @@ function openJoinReview(dataset) {
   joinTargetDataset = dataset;
   joinEvidence = null;
   elements["join-section"].hidden = false;
+  journey.reach(6);
   elements["join-target"].textContent = `Current dataset: ${currentDataset.title}. Saved dataset: ${dataset.title}.`;
   fillJoinFields(elements["join-source-field"], currentDataset.joinSnapshot.fields);
   fillJoinFields(elements["join-target-field"], dataset.joinSnapshot.fields);
@@ -940,7 +1013,7 @@ elements["join-confirm-button"].addEventListener("click", async () => {
   const heading = document.createElement("h3");
   heading.textContent = "Confirmed bounded join review";
   const note = document.createElement("p");
-  note.textContent = "The relationship marker and unmatched-row counts were saved. This does not execute or endorse a full-data join.";
+  note.textContent = "Saved the relationship marker, unmatched-row counts, and join provenance. This does not execute or endorse a full-data join.";
   elements["join-result"].replaceChildren(heading, note);
   await refreshStorageSummary();
 });
@@ -1022,6 +1095,154 @@ elements["catalog-form"].addEventListener("submit", async (event) => {
   event.preventDefault();
   await searchCatalog();
 });
+
+function renderCatalogDetails(catalog) {
+  activeCatalog = catalog;
+  const verified = catalog.lastVerified ? new Date(catalog.lastVerified).toISOString().slice(0, 10) : "Not yet verified from the browser";
+  elements["catalog-details"].replaceChildren();
+  const dl = document.createElement("dl");
+  dl.className = "metadata";
+  const rows = [
+    ["Description", catalog.description],
+    ["Platform", `${catalog.platform} (API ${catalog.apiVersion})`],
+    ["Jurisdiction", catalog.jurisdiction],
+    ["Last verified", verified],
+    ["Known limitations", catalog.knownLimitations],
+  ];
+  rows.forEach(([term, value]) => {
+    const dt = document.createElement("dt");
+    const dd = document.createElement("dd");
+    dt.textContent = term;
+    dd.textContent = value || "Not supplied";
+    dl.append(dt, dd);
+  });
+  elements["catalog-details"].append(dl);
+  elements["catalog-publisher-link"].href = catalog.publisherUrl || catalog.baseUrl;
+  elements["catalog-publisher-link"].textContent = `Visit the ${catalog.name} catalog website`;
+}
+
+async function refreshCatalogPicker(selectId) {
+  const builtins = listBuiltinCatalogs();
+  const custom = await listCustomCatalogs().catch(() => []);
+  const all = [...builtins, ...custom];
+  const select = elements["catalog-select"];
+  const previous = selectId || select.value || DEFAULT_CATALOG_ID;
+  select.replaceChildren();
+  if (builtins.length) {
+    const group = document.createElement("optgroup");
+    group.label = "Built-in catalogs";
+    builtins.forEach((catalog) => {
+      const option = document.createElement("option");
+      option.value = catalog.id;
+      option.textContent = `${catalog.name} (${catalog.platform})`;
+      group.append(option);
+    });
+    select.append(group);
+  }
+  if (custom.length) {
+    const group = document.createElement("optgroup");
+    group.label = "Your saved catalogs";
+    custom.forEach((catalog) => {
+      const option = document.createElement("option");
+      option.value = catalog.id;
+      option.textContent = `${catalog.name} (${catalog.platform})`;
+      group.append(option);
+    });
+    select.append(group);
+  }
+  const chosen = all.find((catalog) => catalog.id === previous) || all.find((catalog) => catalog.id === DEFAULT_CATALOG_ID) || all[0];
+  if (chosen) {
+    select.value = chosen.id;
+    renderCatalogDetails(chosen);
+  }
+  renderCustomCatalogList(custom);
+}
+
+function renderCustomCatalogList(custom) {
+  const container = elements["custom-catalog-list"];
+  container.replaceChildren();
+  if (!custom.length) return;
+  const heading = document.createElement("h3");
+  heading.textContent = "Saved catalogs in this browser";
+  const list = document.createElement("ul");
+  custom.forEach((catalog) => {
+    const item = document.createElement("li");
+    const label = document.createElement("span");
+    label.textContent = `${catalog.name} — ${catalog.baseUrl} (${catalog.platform})`;
+    const rename = document.createElement("button");
+    rename.type = "button";
+    rename.className = "button-secondary compact-button";
+    rename.textContent = "Rename";
+    rename.addEventListener("click", async () => {
+      const next = window.prompt("New name for this catalog", catalog.name);
+      if (next === null) return;
+      await saveCustomCatalog({ ...catalog, name: next.trim() || catalog.baseUrl });
+      await refreshCatalogPicker(catalog.id);
+    });
+    const retest = document.createElement("button");
+    retest.type = "button";
+    retest.className = "button-secondary compact-button";
+    retest.textContent = "Retest";
+    retest.addEventListener("click", async () => {
+      const result = await detectCatalog(catalog.baseUrl);
+      setStatus(result.supported ? `${catalog.name} still responds as ${result.platform}.` : `${catalog.name} did not respond as a supported catalog: ${result.reason}`, result.supported ? "" : "error");
+    });
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "button-secondary compact-button";
+    remove.textContent = "Remove";
+    remove.addEventListener("click", async () => {
+      await removeCustomCatalog(catalog.key);
+      await refreshCatalogPicker(DEFAULT_CATALOG_ID);
+    });
+    item.append(label, rename, retest, remove);
+    list.append(item);
+  });
+  container.append(heading, list);
+}
+
+elements["catalog-select"].addEventListener("change", async () => {
+  const id = elements["catalog-select"].value;
+  const catalog = getBuiltinCatalog(id) || (await listCustomCatalogs()).find((entry) => entry.id === id);
+  if (catalog) renderCatalogDetails(catalog);
+});
+
+elements["custom-catalog-form"].addEventListener("submit", async (event) => {
+  event.preventDefault();
+  detectedCustomCatalog = null;
+  elements["save-catalog-button"].disabled = true;
+  const url = elements["catalog-url"].value.trim();
+  if (!url) {
+    elements["catalog-detection"].textContent = "Enter a catalog URL to test.";
+    return;
+  }
+  elements["catalog-detection"].textContent = "Testing the catalog from your browser…";
+  try {
+    const result = await detectCatalog(url);
+    if (!result.supported) {
+      elements["catalog-detection"].textContent = `Not a supported catalog: ${result.reason}`;
+      return;
+    }
+    detectedCustomCatalog = normalizeCustomCatalog({ url, name: elements["custom-catalog-name"].value, platform: result.platform, apiVersion: result.apiVersion });
+    elements["catalog-detection"].textContent = `Detected a ${result.platform} catalog. You can save it in this browser.`;
+    elements["save-catalog-button"].disabled = false;
+  } catch (error) {
+    elements["catalog-detection"].textContent = `Catalog test failed: ${error.message}`;
+  }
+});
+
+elements["save-catalog-button"].addEventListener("click", async () => {
+  if (!detectedCustomCatalog) return;
+  await saveCustomCatalog(detectedCustomCatalog);
+  elements["catalog-detection"].textContent = `Saved ${detectedCustomCatalog.name} in this browser.`;
+  elements["save-catalog-button"].disabled = true;
+  const savedId = detectedCustomCatalog.id;
+  detectedCustomCatalog = null;
+  elements["catalog-url"].value = "";
+  elements["custom-catalog-name"].value = "";
+  await refreshCatalogPicker(savedId);
+});
+
 
 elements["export-button"].addEventListener("click", async () => {
   try {
@@ -1115,7 +1336,7 @@ function renderCapabilityReport(report, decision) {
     localPlanner.addEventListener("click", runHuggingFacePlanner);
     container.append(localPlanner);
     const localNote = document.createElement("p");
-    localNote.textContent = "Optional local model: about 500 MB, downloaded only after approval and kept in the browser-managed cache.";
+    localNote.textContent = "Optional local AI planner: about 500 MB, downloaded only after approval and kept in the browser-managed cache. It suggests a plan; deterministic code validates and runs the query.";
     container.append(localNote);
   }
   if (decision.queryPlanner === "browser-downloadable") {
@@ -1135,7 +1356,7 @@ async function runBrowserModelPreparation() {
   cancel.textContent = "Cancel browser model download";
   cancel.addEventListener("click", () => controller.abort());
   elements["capability-output"].append(cancel);
-  setStatus("Preparing the browser-managed model after your approval...");
+  setStatus("Downloading and preparing the browser-provided AI model after your approval. The model stays browser-managed...");
   try {
     const { createChromePromptProvider } = await import("./ai/providers.js");
     const provider = createChromePromptProvider(window, { signal: controller.signal });
@@ -1195,7 +1416,7 @@ async function runHuggingFacePlanner() {
   cancel.textContent = "Cancel local model";
   cancel.addEventListener("click", () => plannerAbortController?.abort());
   elements["capability-output"].append(cancel);
-  setStatus("Preparing the optional local model...");
+  setStatus("Downloading and preparing the optional local AI planner after your approval. Source data stays in this browser...");
   try {
     const { createHuggingFaceProvider } = await import("./ai/providers.js");
     const provider = createHuggingFaceProvider({
@@ -1227,7 +1448,7 @@ async function runHuggingFacePlanner() {
 }
 
 elements["semantic-button"].addEventListener("click", async () => {
-  setStatus("Checking page-accessible browser AI interfaces. No model download has been requested...");
+  setStatus("Checking page-accessible browser AI interfaces. This checks availability only; no model download or source-data transfer has been requested...");
   try {
     const { probeBrowserCapabilities, capabilityDecision } = await import("./ai/browser-capabilities.js");
     const report = await probeBrowserCapabilities(window);
@@ -1240,6 +1461,10 @@ elements["semantic-button"].addEventListener("click", async () => {
 
 refreshSaved().catch((error) => setStatus(`Browser storage is unavailable: ${error.message}`, "error"));
 refreshHistory().catch((error) => setStatus(`History is unavailable: ${error.message}`, "error"));
+refreshCatalogPicker(DEFAULT_CATALOG_ID).catch(() => {
+  const cnra = getBuiltinCatalog(DEFAULT_CATALOG_ID);
+  if (cnra) renderCatalogDetails(cnra);
+});
 listRecords("preferences").then((records) => {
   dismissedRelated = new Set(records.find((record) => record.key === "dismissed-related")?.values || []);
 }).catch(() => {});

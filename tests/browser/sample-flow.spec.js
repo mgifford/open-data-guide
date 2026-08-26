@@ -2,6 +2,9 @@ import { test, expect } from "@playwright/test";
 
 test("sample dataset reaches quality profile, table, chart, and SQL", async ({ page }) => {
   await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Processing and AI" })).toBeVisible();
+  await expect(page.locator("#processing")).toContainText("deterministic JavaScript and DuckDB-Wasm run the calculations locally");
+  await expect(page.locator("#processing")).toContainText("AI is never required");
   await page.getByRole("button", { name: "Try the included sample" }).click();
   await expect(page.getByRole("heading", { name: "payments-sample.csv" })).toBeVisible();
   await expect(page.getByText("Direct file")).toBeVisible();

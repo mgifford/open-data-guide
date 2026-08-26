@@ -14,23 +14,19 @@
         <p class="eyebrow">Local-first public data exploration</p>
         <h1>Open Data Guide</h1>
         <p class="lede">Turn a dataset URL into an understandable, inspectable question.</p>
+        <p class="intro">This guide helps people who are not data specialists explore public government datasets published on CKAN and DKAN open-data catalogs. You pick a dataset, understand its fields, ask a plain question, and read a clear answer — all in your own browser.</p>
       </div>
-      <p class="privacy-note">Data is queried in your browser. No account or application server is required.</p>
+<p class="privacy-note">Data is queried in your browser. No account or application server is required. Saved markers may keep up to 100 preview rows for review, and saved analyses may keep bounded result previews.</p>
     </header>
 
-    <nav class="workspace-nav" aria-label="Workspace areas">
-      <a href="#discover">Discover</a>
-      <a href="#dataset-section">Current dataset</a>
-      <a href="#question-section">Ask and review</a>
-      <a href="#history">History</a>
-      <a href="#saved-heading">Saved workspace</a>
-      <a href="#storage">Storage and AI settings</a>
-    </nav>
+    <nav id="journey-nav" class="journey-nav" aria-label="Dataset discovery journey"></nav>
+
 
     <main id="main" class="layout">
-      <section id="discover" class="panel panel-accent" aria-labelledby="start-heading">
-        <h2 id="start-heading">Open a dataset</h2>
-        <p>Paste a direct CSV, JSON, or Parquet URL, or a dataset page from a public data catalog.</p>
+      <section id="discover" class="panel panel-accent journey-section" data-journey-step="1" aria-labelledby="start-heading">
+        <p class="step-eyebrow">Step 1 of 6</p>
+        <h2 id="start-heading">Choose data</h2>
+        <p>Open a starter dataset below, paste a direct CSV, JSON, or Parquet URL or a catalog dataset page, or load a CSV file from your own computer.</p>
         <form id="dataset-form">
           <label for="dataset-url">Dataset URL</label>
           <div class="input-row">
@@ -39,40 +35,82 @@
             <button type="submit">Inspect dataset</button>
           </div>
         </form>
-        <p class="sample-line"><button class="button-secondary" id="sample-button" type="button">Try the included sample</button></p>
+        <div class="local-file">
+          <label for="local-csv-input">Load a CSV file from this computer</label>
+          <input id="local-csv-input" name="local-csv-input" type="file" accept=".csv,text/csv" />
+          <p class="field-hint">The file is read and processed in this browser. It is not uploaded to any server.</p>
+        </div>
+        <p class="sample-line"><button class="button-secondary" id="sample-button" type="button">Try the included sample</button> <span class="field-hint">A small synthetic file kept only as a developer and test fixture, not real data.</span></p>
         <div id="status" class="status" role="status" aria-live="polite"></div>
       </section>
 
-      <section class="panel" aria-labelledby="catalog-heading">
-        <h2 id="catalog-heading">Search a configured catalog</h2>
-        <p>Only catalogs you explicitly add are searched. Browser requests still depend on the catalog allowing cross-origin access.</p>
+      <section class="panel journey-section" data-journey-step="1" aria-labelledby="catalog-heading">
+        <h2 id="catalog-heading">Search open data catalogs</h2>
+        <p>Searches are sent directly from your browser to the catalog you select. There is no Open Data Guide server in between. Whether a search succeeds depends on the catalog allowing cross-origin browser requests. A dataset appearing here does not guarantee its files can be opened directly in the browser.</p>
         <form id="catalog-form">
-          <label for="catalog-url">Data catalog URL</label>
+          <fieldset id="catalog-choice">
+            <legend>Choose a catalog</legend>
+            <label for="catalog-select">Built-in catalogs</label>
+            <select id="catalog-select" name="catalog-select"></select>
+          </fieldset>
+          <div id="catalog-details" class="catalog-details" aria-live="polite"></div>
+          <p><a id="catalog-publisher-link" href="#" target="_blank" rel="noopener noreferrer">Visit the publisher's catalog website</a></p>
+          <label for="catalog-query">Search terms</label>
           <div class="input-row">
-            <input id="catalog-url" name="catalog-url" type="url" placeholder="https://data.example.gov" autocomplete="url" />
+            <input id="catalog-query" name="catalog-query" type="search" placeholder="Leave blank to search terms from the current dataset" />
             <button type="submit">Search catalog</button>
           </div>
-          <label for="catalog-query">Search terms</label>
-          <input id="catalog-query" name="catalog-query" type="search" placeholder="Leave blank to search terms from the current dataset" />
         </form>
+
+        <details id="add-catalog">
+          <summary>Add another catalog</summary>
+          <form id="custom-catalog-form">
+            <label for="catalog-url">Catalog URL</label>
+            <input id="catalog-url" name="catalog-url" type="url" placeholder="https://data.example.gov" autocomplete="url" />
+            <label for="custom-catalog-name">Name shown to you (optional)</label>
+            <input id="custom-catalog-name" name="custom-catalog-name" type="text" />
+            <div class="operation-actions">
+              <button id="test-catalog-button" type="submit">Test catalog</button>
+              <button id="save-catalog-button" class="button-secondary" type="button" disabled>Save in this browser</button>
+            </div>
+            <div id="catalog-detection" class="status" role="status" aria-live="polite"></div>
+          </form>
+          <div id="custom-catalog-list"></div>
+        </details>
+
+        <p class="field-hint">Searching one catalog at a time keeps each request explainable. Searching several catalogs at once is planned future work (see the roadmap note in the workspace and settings area).</p>
+
         <div id="catalog-results" aria-live="polite"></div>
       </section>
 
-      <section class="panel" aria-labelledby="cnra-heading">
-        <h2 id="cnra-heading">CNRA exploration starters</h2>
-        <p>These public data catalog records cover water, groundwater, infrastructure, and wildlife. Open one to inspect its metadata before choosing a resource.</p>
+
+      <section class="panel journey-section" data-journey-step="1" aria-labelledby="starters-heading">
+        <h2 id="starters-heading">Starter datasets</h2>
+        <p>These real public datasets open inside the guide so you can begin without finding a URL. Each verified starter also has a separate link to its publisher page. Verification of live browser access happens in continuous integration or a scheduled health check; an unverified starter is labelled as such.</p>
         <ul class="starter-list">
-          <li><a href="https://data.cnra.ca.gov/dataset/periodic-groundwater-level-measurements">Periodic Groundwater Level Measurements</a><span>Ask: How many monitoring stations are listed by county?</span></li>
-          <li><a href="https://data.cnra.ca.gov/dataset/water-quality-data">Water Quality Data</a><span>Ask: Which analytes and locations have the most observations?</span></li>
-          <li><a href="https://data.cnra.ca.gov/dataset/state-water-project-monthly-report-of-operations">Daily SWP Reservoir Elevation and Storage Data</a><span>Ask: How does storage change over time?</span></li>
-          <li><a href="https://data.cnra.ca.gov/dataset/dry-well-reporting-system-data">Dry Well Reporting System Data</a><span>Ask: How many reports are recorded by county and year?</span></li>
-          <li><a href="https://data.cnra.ca.gov/dataset/bobcat-camera-trap-detections-cdfw-ds3402">Bobcat Camera Trap Detections</a><span>Ask: How many detections are recorded by study area?</span></li>
+          <li>
+            <a href="https://data.cnra.ca.gov/dataset/periodic-groundwater-level-measurements">Periodic Groundwater Level Measurements</a>
+            <span>CKAN · California Natural Resources Agency. Ask: How many monitoring stations are listed by county?</span>
+            <a class="starter-publisher" href="https://data.cnra.ca.gov/dataset/periodic-groundwater-level-measurements" target="_blank" rel="noopener noreferrer">View publisher page</a>
+          </li>
+          <li>
+            <a href="https://data.cnra.ca.gov/dataset/dry-well-reporting-system-data">Dry Well Reporting System Data</a>
+            <span>CKAN · California Natural Resources Agency. Ask: How many reports are recorded by county and year?</span>
+            <a class="starter-publisher" href="https://data.cnra.ca.gov/dataset/dry-well-reporting-system-data" target="_blank" rel="noopener noreferrer">View publisher page</a>
+          </li>
+          <li>
+            <a href="https://openpaymentsdata.cms.gov/dataset/summary">CMS Open Payments Summary</a>
+            <span>DKAN · Centers for Medicare &amp; Medicaid Services. Ask: How do payment totals compare across categories? <em>Verification pending a live browser-access health check.</em></span>
+            <a class="starter-publisher" href="https://openpaymentsdata.cms.gov" target="_blank" rel="noopener noreferrer">View publisher page</a>
+          </li>
         </ul>
       </section>
 
-      <section id="dataset-section" class="panel" aria-labelledby="dataset-heading" hidden>
+
+      <section id="dataset-section" class="panel journey-section" data-journey-step="2" aria-labelledby="dataset-heading" hidden>
         <div class="section-heading">
           <div>
+            <p class="step-eyebrow">Step 2 of 6</p>
             <p id="platform-label" class="eyebrow"></p>
             <h2 id="dataset-heading"></h2>
           </div>
@@ -89,7 +127,7 @@
         <div id="resource-status" class="status" role="status" aria-live="polite"></div>
       </section>
 
-      <section id="explore-section" class="panel" aria-labelledby="explore-heading" hidden>
+      <section id="explore-section" class="panel journey-section" data-journey-step="2" aria-labelledby="explore-heading" hidden>
         <h2 id="explore-heading">Understand this resource</h2>
         <div id="schematic-view"></div>
         <div id="profile-summary" class="summary-grid"></div>
@@ -104,7 +142,8 @@
         </details>
       </section>
 
-      <section id="question-section" class="panel" aria-labelledby="question-heading" hidden>
+      <section id="question-section" class="panel journey-section" data-journey-step="3" aria-labelledby="question-heading" hidden>
+        <p class="step-eyebrow">Steps 3–5 of 6</p>
         <h2 id="question-heading">Ask a reproducible question</h2>
         <p>This draft understands constrained questions such as <q>count by state</q> or <q>average amount by category</q>. Review the interpretation before running it.</p>
         <form id="question-form">
@@ -162,21 +201,8 @@
         </div>
       </section>
 
-      <section class="panel" aria-labelledby="saved-heading">
-        <div class="section-heading">
-          <div>
-            <h2 id="saved-heading">Saved datasets</h2>
-            <p>These are markers in this browser, not copies of the source files.</p>
-          </div>
-          <button id="semantic-button" class="button-secondary" type="button">Check browser AI support</button>
-        </div>
-        <p class="model-note">The capability check does not download a model. If the browser has no suitable built-in option, you can separately choose an Apache-2.0 MiniLM model from Hugging Face.</p>
-        <div id="capability-output"></div>
-        <div id="saved-list"></div>
-        <div id="related-list" aria-live="polite"></div>
-      </section>
-
-      <section id="join-section" class="panel" aria-labelledby="join-heading" hidden>
+      <section id="join-section" class="panel journey-section" data-journey-step="6" aria-labelledby="join-heading" hidden>
+        <p class="step-eyebrow">Step 6 of 6</p>
         <h2 id="join-heading">Review a possible dataset join</h2>
         <p>This review uses up to 100 preview rows saved with each dataset marker. It does not approve a full-data join.</p>
         <form id="join-form">
@@ -195,43 +221,84 @@
         <div id="join-result"></div>
       </section>
 
-      <section id="history" class="panel" aria-labelledby="history-heading">
-        <h2 id="history-heading">Analysis history</h2>
-        <form id="history-search-form">
-          <label for="history-query">Search saved questions</label>
-          <div class="input-row">
-            <input id="history-query" name="history-query" type="search" />
-            <button type="submit">Search history</button>
+      <section id="workspace-settings" class="workspace-settings" aria-labelledby="workspace-settings-heading">
+        <h2 id="workspace-settings-heading">Workspace and settings</h2>
+        <p>These panels manage what this browser has stored, how processing works, and the optional AI settings. They sit outside the six-step journey.</p>
+
+        <section id="processing" class="panel panel-accent" aria-labelledby="processing-heading">
+          <h3 id="processing-heading">Processing and AI</h3>
+          <p><strong>Your data is processed in this browser.</strong> Open Data Guide has no application server, account, analytics, or telemetry. It does not send your source rows or questions to an Open Data Guide service.</p>
+          <ul class="processing-list">
+            <li><strong>Regular queries:</strong> deterministic JavaScript and DuckDB-Wasm run the calculations locally. This is code, not AI.</li>
+            <li><strong>Optional AI planning:</strong> a browser-provided model or the approved Hugging Face model runs in this browser. AI only suggests a constrained plan; deterministic code validates and runs it.</li>
+            <li><strong>Downloads:</strong> browser-provided AI may download a browser-managed model after you approve it. The optional Hugging Face planner downloads about 500 MB after approval. Optional semantic matching downloads a pinned MiniLM model of about 23 MB plus runtime files after approval.</li>
+            <li><strong>Network requests:</strong> the browser may request catalog metadata, dictionaries, and selected data directly from the publisher or catalog you open. Remote DataStore requests include the selected fields, filters, and page limits needed for the query; the returned data and all calculations are processed in this browser. These are source requests, not requests to an Open Data Guide server.</li>
+            <li><strong>Local execution limits:</strong> DuckDB-Wasm cannot currently be interrupted once synchronous parsing or a query has begun; the app keeps the query visible and avoids claiming a partial result is complete.</li>
+            <li><strong>Optional semantic matching sees:</strong> dataset titles, descriptions, and field descriptions. It does not use raw dataset rows.</li>
+          </ul>
+          <p class="processing-note">Use “Check browser AI support” below to see what your browser exposes. Checking does not download a model. AI is never required for the deterministic query workflow.</p>
+        </section>
+
+        <section class="panel" aria-labelledby="saved-heading">
+          <div class="section-heading">
+            <div>
+              <h3 id="saved-heading">Saved datasets</h3>
+              <p>These are markers in this browser, not copies of the source files.</p>
+            </div>
+            <button id="semantic-button" class="button-secondary" type="button">Check browser AI support</button>
           </div>
-        </form>
-        <div id="history-list"></div>
-      </section>
+          <p class="model-note">The capability check does not download a model. If the browser has no suitable built-in option, you can separately choose an Apache-2.0 MiniLM model from Hugging Face.</p>
+          <div id="capability-output"></div>
+          <div id="saved-list"></div>
+          <div id="related-list" aria-live="polite"></div>
+        </section>
 
-      <section id="storage" class="panel" aria-labelledby="storage-heading">
-        <h2 id="storage-heading">Storage and AI settings</h2>
-        <p id="storage-summary">Workspace data stays in this browser. Source files are not copied into the workspace.</p>
-        <div class="saved-actions">
-          <button id="export-button" class="button-secondary" type="button">Export workspace</button>
-          <label class="file-button button-secondary" for="import-input">Import workspace</label>
-          <input id="import-input" type="file" accept="application/json" hidden />
-          <button id="clear-data-button" class="button-secondary" type="button">Delete local application data</button>
-        </div>
-        <div id="export-receipt" class="status" role="status" aria-live="polite" hidden></div>
-      </section>
+        <section id="history" class="panel" aria-labelledby="history-heading">
+          <h3 id="history-heading">Analysis history</h3>
+          <form id="history-search-form">
+            <label for="history-query">Search saved questions</label>
+            <div class="input-row">
+              <input id="history-query" name="history-query" type="search" />
+              <button type="submit">Search history</button>
+            </div>
+          </form>
+          <div id="history-list"></div>
+        </section>
 
-      <section id="activity" class="panel" aria-labelledby="activity-heading">
-        <h2 id="activity-heading">Activity and diagnostics</h2>
-        <p>Session events omit dataset rows, model prompts, and request headers.</p>
-        <details>
-          <summary>Show recent activity</summary>
-          <ol id="activity-list"></ol>
-          <button id="copy-diagnostics-button" class="button-secondary" type="button">Copy diagnostics</button>
-          <button id="download-diagnostics-button" class="button-secondary" type="button">Download diagnostics</button>
-          <button id="clear-diagnostics-button" class="button-secondary" type="button">Clear diagnostics</button>
-          <div id="diagnostics-status" class="status" role="status" aria-live="polite"></div>
-        </details>
+        <section id="storage" class="panel" aria-labelledby="storage-heading">
+          <h3 id="storage-heading">Storage and AI settings</h3>
+          <p id="storage-summary">Workspace data stays in this browser. Source files are not copied into the workspace. Saved markers may keep up to 100 preview rows, saved analyses may keep bounded result previews, and workspace exports include those previews.</p>
+          <div class="saved-actions">
+            <button id="export-button" class="button-secondary" type="button">Export workspace</button>
+            <label class="file-button button-secondary" for="import-input">Import workspace</label>
+            <input id="import-input" type="file" accept="application/json" hidden />
+            <button id="clear-data-button" class="button-secondary" type="button">Delete local application data</button>
+          </div>
+          <div id="export-receipt" class="status" role="status" aria-live="polite" hidden></div>
+        </section>
+
+        <section id="activity" class="panel" aria-labelledby="activity-heading">
+          <h3 id="activity-heading">Activity and diagnostics</h3>
+          <p>Session events omit dataset rows, model prompts, and request headers.</p>
+          <details>
+            <summary>Show recent activity</summary>
+            <ol id="activity-list"></ol>
+            <button id="copy-diagnostics-button" class="button-secondary" type="button">Copy diagnostics</button>
+            <button id="download-diagnostics-button" class="button-secondary" type="button">Download diagnostics</button>
+            <button id="clear-diagnostics-button" class="button-secondary" type="button">Clear diagnostics</button>
+            <div id="diagnostics-status" class="status" role="status" aria-live="polite"></div>
+          </details>
+        </section>
+
+        <section class="panel" aria-labelledby="roadmap-heading">
+          <h3 id="roadmap-heading">Planned future work</h3>
+          <ul>
+            <li><strong>Search several catalogs at once.</strong> A future release may let you search multiple catalogs in one action. It is deferred because it needs bounded concurrency, per-catalog failure handling that keeps successful results when one catalog fails, deduplication using only documented identifiers or canonical source URLs, and an explainable way to rank results across catalogs.</li>
+          </ul>
+        </section>
       </section>
     </main>
+
 
     <footer>
       <p>Prototype software. Always inspect source documentation, units, suppression rules, and generated queries.</p>

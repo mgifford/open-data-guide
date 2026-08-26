@@ -115,6 +115,27 @@ export function deleteRecord(storeName, key) {
   return transact([storeName], "readwrite", (stores) => stores[storeName].delete(key));
 }
 
+const CUSTOM_CATALOG_PREFIX = "catalog:custom:";
+
+export async function listCustomCatalogs() {
+  const records = await listRecords("preferences");
+  return records.filter((record) => typeof record.key === "string" && record.key.startsWith(CUSTOM_CATALOG_PREFIX));
+}
+
+export function saveCustomCatalog(catalog) {
+  if (!catalog || typeof catalog.key !== "string" || !catalog.key.startsWith(CUSTOM_CATALOG_PREFIX)) {
+    throw new Error("A custom catalog must use the reserved custom-catalog key.");
+  }
+  return putRecord("preferences", catalog);
+}
+
+export function removeCustomCatalog(key) {
+  if (typeof key !== "string" || !key.startsWith(CUSTOM_CATALOG_PREFIX)) {
+    throw new Error("Only custom catalogs can be removed here.");
+  }
+  return deleteRecord("preferences", key);
+}
+
 export async function exportWorkspace({ includeEmbeddings = false } = {}) {
   const records = {};
   for (const storeName of STORES) records[storeName] = storeName === "embeddings" && !includeEmbeddings ? [] : await listRecords(storeName);

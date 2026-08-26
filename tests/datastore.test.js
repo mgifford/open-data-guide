@@ -32,6 +32,10 @@ describe("CKAN DataStore adapter", () => {
     expect(() => datastoreRequest({ url: "https://example.gov/data.csv" })).toThrow(/DataStore/);
   });
 
+  it("requires the preserved catalog origin for DataStore requests", () => {
+    expect(() => datastoreRequest({ datastoreActive: true, datastoreId: "resource-1", url: "https://files.example.net/download/data.csv" })).toThrow(/catalog origin/i);
+  });
+
   it("paginates and aggregates a controlled DataStore fixture", async () => {
     let calls = 0;
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async () => {

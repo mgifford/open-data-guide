@@ -12,7 +12,8 @@ export function datastoreResource(resource) {
 
 export function datastoreRequest(resource, plan = {}, offset = 0, limit = DATASTORE_PAGE_SIZE) {
   if (!datastoreResource(resource)) throw new Error("This resource does not expose a CKAN DataStore.");
-  const endpoint = new URL("/api/3/action/datastore_search", resource.catalogUrl || resource.url);
+  if (!resource.catalogUrl) throw new Error("CKAN DataStore requests require the preserved catalog origin.");
+  const endpoint = new URL("/api/3/action/datastore_search", resource.catalogUrl);
   endpoint.searchParams.set("resource_id", resource.datastoreId);
   endpoint.searchParams.set("limit", String(Math.min(Math.max(Number(limit) || DATASTORE_PAGE_SIZE, 1), DATASTORE_PAGE_SIZE)));
   endpoint.searchParams.set("offset", String(Math.max(Number(offset) || 0, 0)));

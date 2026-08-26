@@ -82,7 +82,7 @@ describe("visualization advisor", () => {
     expect(advice.warnings[0]).toContain("reference geometry");
   });
 
-  it("recommends a point map when latitude and longitude fields are available", () => {
+  it("recommends a point map only for explicit coordinate results", () => {
     const plan = { aggregation: "count", dimension: "site_code" };
     const fields = [
       { name: "site_code", type: "VARCHAR" },
@@ -99,7 +99,7 @@ describe("visualization advisor", () => {
     expect(advice.warnings[0].toLowerCase()).toContain("accessible");
   });
 
-  it("does not recommend a map when result rows do not include latitude and longitude values", () => {
+  it("does not recommend a map for grouped aggregate rows without coordinate values", () => {
     const plan = { aggregation: "count", dimension: "site_code" };
     const fields = [
       { name: "site_code", type: "VARCHAR" },

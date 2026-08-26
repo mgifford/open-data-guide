@@ -64,6 +64,61 @@ test("discloses MiniLM before requiring consent", async ({ page }) => {
   expect(modelRequests).toHaveLength(0);
 });
 
+test("records an explicit join review with unmatched preview counts and provenance", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Try the included sample" }).click();
+  await page.getByRole("button", { name: "Load selected resource" }).click();
+  await page.getByRole("button", { name: "Save marker in this browser" }).click();
+  await page.evaluate(() => new Promise((resolve, reject) => {
+    const request = indexedDB.open("open-data-guide");
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const db = request.result;
+      const tx = db.transaction(["datasets"], "readwrite");
+      tx.objectStore("datasets").put({
+        key: "join-review-target",
+        connectorId: "ckan",
+        sourceUrl: "https://example.gov/target.csv",
+        catalogUrl: "https://catalog.example.gov/dataset/target",
+        title: "Saved join target",
+        description: "Comparison dataset",
+        publisher: "Example Publisher",
+        schemaVersion: 3,
+        savedAt: new Date().toISOString(),
+        joinSnapshot: {
+          fields: [
+            { name: "state", type: "VARCHAR" },
+            { name: "amount", type: "DOUBLE" },
+          ],
+          rows: [
+            { state: "CA", amount: 15 },
+            { state: "WA", amount: 6 },
+          ],
+          rowLimit: 100,
+          totalRows: 2,
+          resourceId: "target-resource",
+          resourceUrl: "https://example.gov/target.csv",
+          capturedAt: new Date().toISOString(),
+        },
+      });
+      tx.oncomplete = () => { db.close(); resolve(); };
+      tx.onerror = () => reject(tx.error);
+    };
+  }));
+  await page.reload();
+  await page.getByRole("button", { name: "Try the included sample" }).click();
+  await page.getByRole("button", { name: "Load selected resource" }).click();
+  await page.getByRole("button", { name: "Review possible join" }).click();
+  await page.getByRole("button", { name: "Review join keys" }).click();
+  await expect(page.getByText("Unmatched source preview rows")).toBeVisible();
+  await expect(page.getByText("Unmatched target preview rows")).toBeVisible();
+  await page.getByRole("checkbox", { name: /I reviewed the key evidence/i }).check();
+  await page.getByRole("button", { name: "Confirm bounded join review" }).click();
+  await expect(page.getByText("Confirmed bounded join review")).toBeVisible();
+  await expect(page.getByText(/saved.*provenance/i)).toBeVisible();
+  await expect(page.locator("#storage-summary")).toContainText("1 relationship record");
+});
+
 test("migrates a legacy version-one dataset marker", async ({ page }) => {
   await page.goto("/migration-seed.html");
   await page.evaluate(() => new Promise((resolve, reject) => {

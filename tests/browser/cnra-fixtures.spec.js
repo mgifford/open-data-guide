@@ -27,7 +27,12 @@ for (const [label, filename, expectedField] of fixtures) {
     await expect(page.getByRole("heading", { name: "Dataset Overview" })).toBeVisible();
     await expect(page.getByRole("table", { name: `Result for: count by ${expectedField}` })).toBeVisible();
     if (label === "bobcat") await expect(page.locator("#schematic-view")).toContainText("Location point");
-    if (label === "bobcat") await expect(page.locator("#chart svg circle")).toHaveCount(2);
+    if (label === "bobcat") {
+      // Grouped "count by project_name" has no coordinate rows, so it must render as a bar chart, not a map.
+      const describedBy = await page.locator("#chart .chart-host").getAttribute("aria-describedby");
+      await expect(page.locator(`#${describedBy}`)).toContainText("chart of count by project_name");
+      await expect(page.locator("#chart .chart-host")).not.toHaveAttribute("aria-label", /Point map/);
+    }
     await expect(page.getByRole("button", { name: "Download CSV" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Download JSON" })).toBeVisible();
     if (label === "bobcat" || label === "dry well") {

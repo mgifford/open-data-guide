@@ -9,6 +9,10 @@ const GEOGRAPHIC_ROLES = new Set(["postal-code", "zip-code", "zip-plus-four", "z
 const TOP_N_LIMIT = 15;
 const SMALL_CARDINALITY = 5;
 
+function explicitCoordinateRows(rows = []) {
+  return rows.filter((row) => Object.hasOwn(row, "latitude") && Object.hasOwn(row, "longitude") && Number.isFinite(Number(row.latitude)) && Number.isFinite(Number(row.longitude)));
+}
+
 export function fieldMetadata(fields = []) {
   return fields.reduce((acc, field) => {
     acc[field.name] = {
@@ -35,7 +39,7 @@ export function adviseChartKind(plan, fields = [], results = []) {
   const assumptions = [];
   const latitudeField = fields.find((field) => field.semanticRole === "latitude" || /^(lat|latitude)$/i.test(field.name));
   const longitudeField = fields.find((field) => field.semanticRole === "longitude" || /^(lon|long|longitude)$/i.test(field.name));
-  const mapCandidateRows = results.filter((row) => Number.isFinite(Number(row.latitude)) && Number.isFinite(Number(row.longitude)));
+  const mapCandidateRows = explicitCoordinateRows(results);
 
   if (latitudeField && longitudeField && mapCandidateRows.length) {
     assumptions.push(`Point map uses ${latitudeField.name} and ${longitudeField.name} to plot station locations.`);

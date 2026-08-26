@@ -1,7 +1,11 @@
-# Privacy
+# Privacy and local processing
 
-The static site makes browser requests to URLs the user opens or explicitly configures, including catalog metadata, data dictionaries, selected data resources, optional browser-managed AI availability APIs, and the explicitly requested MiniLM model sources.
+Open Data Guide processes queries in the browser. Deterministic JavaScript and DuckDB-Wasm perform profiling, filtering, aggregation, validation, charting, and table rendering. AI is optional: a browser-provided model or an approved local Hugging Face model may suggest a constrained query plan, but deterministic code validates and executes that plan. AI is not required for the query workflow.
 
-Dataset markers, normalized metadata, field dictionaries, relationships, bounded query history, embeddings, and preferences remain in IndexedDB. Source files and complete result tables are not copied into IndexedDB. Browser-managed model cache is separate and may be evicted by the browser.
+The browser does make direct requests to URLs that you open or explicitly configure. These can include catalog metadata, data dictionaries, selected resources, and optional model files. A remote DataStore request includes the selected fields, filters, and page limits needed for the query; its returned data and all calculations are processed in this browser. These requests go to the publisher or catalog, not to an Open Data Guide application server. There is no Open Data Guide account, analytics, telemetry, or client-side credential. Source rows and questions are not sent to an Open Data Guide service.
 
-There is no account, application server, analytics, telemetry, or client-side credential. Export and opening a source URL are explicit user actions.
+The optional browser-provided AI model is managed by the browser and may download only after you approve preparation. The optional Hugging Face planner downloads about 500 MB after approval. Optional semantic matching downloads a pinned MiniLM model of about 23 MB plus runtime files after approval. Semantic matching uses dataset titles, descriptions, and field descriptions; it does not use raw dataset rows. These model files are fetched from their stated browser-visible sources and cached by the browser.
+
+Dataset markers, normalized metadata, field dictionaries, relationships, bounded query history, embeddings, and preferences remain in IndexedDB. Saving a marker can retain up to 100 preview rows for bounded join review, and query history can retain up to 20 result rows. Workspace exports include these local records, so an export may contain source-row previews. Source files and complete result tables are not copied into IndexedDB. Browser-managed model cache is separate and may be evicted by the browser.
+
+Export and opening a source URL are explicit user actions. Clearing local application data does not remove browser-managed model caches; use browser site-data controls for those caches.
