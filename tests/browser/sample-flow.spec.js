@@ -9,6 +9,11 @@ test("sample dataset reaches quality profile, table, chart, and SQL", async ({ p
   await page.getByRole("button", { name: "Load selected resource" }).click();
   await expect(page.getByRole("heading", { name: "Data quality before analysis" })).toBeVisible();
   await expect(page.getByRole("table", { name: "Profile for fields used in analysis" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Dataset Overview" })).toBeVisible();
+  await expect(page.getByText("How many records are in this dataset?", { exact: false })).toBeVisible();
+  await page.getByRole("button", { name: "Apply suggestion" }).first().click();
+  await expect(page.getByRole("button", { name: "Run verified query" })).toBeVisible();
+  await expect(page.getByRole("table", { name: "Result for: count by state" })).toHaveCount(0);
 
   const question = page.getByRole("textbox", { name: "Question" });
   await question.fill("count by state");

@@ -13,7 +13,11 @@ function classifyFieldRole(field) {
   return "categorical";
 }
 
-export function renderSchematic(container, fields = [], qualities = {}, resource = {}) {
+function suggestion(label, plan, why) {
+  return { label, plan, why };
+}
+
+export function renderSchematic(container, fields = [], qualities = {}, resource = {}, onApply = null) {
   container.replaceChildren();
 
   const section = document.createElement("section");
@@ -36,6 +40,14 @@ export function renderSchematic(container, fields = [], qualities = {}, resource
   const completeness = calculateCompleteness(fields, qualities);
   healthText.innerHTML = `<strong>Completeness:</strong> ${completeness}% of profiled cells contain values`;
   stats.appendChild(healthText);
+
+  const latitude = fields.find((field) => field.semanticRole === "latitude" || /^(lat|latitude)$/i.test(field.name));
+  const longitude = fields.find((field) => field.semanticRole === "longitude" || /^(lon|long|longitude)$/i.test(field.name));
+  if (latitude && longitude) {
+    const locationText = document.createElement("p");
+    locationText.textContent = `Location point: ${latitude.name} + ${longitude.name}. These two fields describe one place; a map needs reviewed reference geometry.`;
+    stats.appendChild(locationText);
+  }
 
   section.appendChild(stats);
 
@@ -111,29 +123,43 @@ export function renderSchematic(container, fields = [], qualities = {}, resource
   suggestedSection.appendChild(suggestedTitle);
   const suggestedList = document.createElement("ul");
   
-  // Generate questions based on field types
+  // Generate only plans the deterministic query engine can execute.
   const categoricalFields = fields.filter((f) => classifyFieldRole(f) === "categorical");
   const numericFields = fields.filter((f) => classifyFieldRole(f) === "numeric");
+  const suggestions = [suggestion("How many records are in this dataset?", { aggregation: "count", measure: "", dimension: "", timeField: "", filters: [], limit: 100 }, "Returns one total.")];
+
+  if (categoricalFields.length) {
+    const cf = categoricalFields[0];
+    suggestions.push(suggestion(`Compare records by ${cf.name}`, { aggregation: "count", measure: "", dimension: cf.name, timeField: "", filters: [], limit: 100 }, `Shows a table and bounded bar chart grouped by ${cf.name}.`));
+  }
 
   if (categoricalFields.length && numericFields.length) {
     const cf = categoricalFields[0];
     const nf = numericFields[0];
-    const li1 = document.createElement("li");
-    li1.textContent = `Count of records by ${cf.name}`;
-    suggestedList.appendChild(li1);
-    
-    const li2 = document.createElement("li");
-    li2.textContent = `Average ${nf.name} by ${cf.name}`;
-    suggestedList.appendChild(li2);
+    suggestions.push(suggestion(`Compare average ${nf.name} by ${cf.name}`, { aggregation: "avg", measure: nf.name, dimension: cf.name, timeField: "", filters: [], limit: 100 }, `Shows typical ${nf.name} for each ${cf.name}.`));
   }
 
   if (dateFields.length && numericFields.length) {
     const df = dateFields[0];
     const nf = numericFields[0];
-    const li = document.createElement("li");
-    li.textContent = `Choose a calculation for ${nf.name} over ${df.name}`;
-    suggestedList.appendChild(li);
+    suggestions.push(suggestion(`See average ${nf.name} over ${df.name}`, { aggregation: "avg", measure: nf.name, dimension: df.name, timeField: df.name, filters: [], limit: 100 }, `Shows how the average changes across ${df.name}.`));
   }
+
+  suggestions.slice(0, 5).forEach(({ label, plan, why }) => {
+    const li = document.createElement("li");
+    const text = document.createElement("span");
+    text.textContent = `${label}. ${why}`;
+    li.appendChild(text);
+    if (onApply) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "button-secondary compact-button";
+      button.textContent = "Apply suggestion";
+      button.addEventListener("click", () => onApply(plan));
+      li.append(" ", button);
+    }
+    suggestedList.appendChild(li);
+  });
 
   suggestedSection.appendChild(suggestedList);
   section.appendChild(suggestedSection);

@@ -115,4 +115,11 @@ footer { color: var(--muted); padding-block: 2rem 4rem; }
     --danger-soft: #403619;
   }
   .button-secondary { color: var(--text); }
+  button { color: var(--background); }
+}
+
+@media (forced-colors: active) {
+  button, input, select, .panel, .story, .status:not(:empty), .notice { border: 1px solid ButtonText; background: Canvas; color: CanvasText; }
+  a { color: LinkText; }
+  button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible, a:focus-visible { outline: 3px solid Highlight; }
 }

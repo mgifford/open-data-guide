@@ -123,6 +123,20 @@ function renderPlanReview(plan) {
   elements["plan-review"].append(summary, detail);
 }
 
+function applySuggestion(plan) {
+  activePlan = { version: 1, status: "ready", question: plan.question || "Suggested analysis", ...plan, visualization: { kind: plan.dimension ? "bar" : "table", x: plan.dimension || null, y: plan.measure || "value", series: null } };
+  elements.question.value = activePlan.question;
+  elements.aggregation.value = activePlan.aggregation;
+  fillSelect(elements.measure, currentFields.filter((field) => /INT|DECIMAL|DOUBLE|FLOAT|REAL|NUMERIC|HUGEINT/i.test(field.type || "")), false);
+  fillSelect(elements.dimension, currentFields, true);
+  elements.measure.value = activePlan.measure || "";
+  elements.dimension.value = activePlan.dimension || "";
+  elements["plan-form"].hidden = false;
+  renderPlanReview(activePlan);
+  validateCurrentControls();
+  elements["plan-form"].scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
 function controlsPlan() {
   const plan = {
     ...(activePlan || {}),
@@ -537,6 +551,7 @@ function renderProfile(profile) {
   const qualityTable = document.createElement("div");
   elements["quality-summary"].append(qualityHeading, qualityNote, qualityTable);
   renderTable(qualityTable, qualityRows, "Profile for fields used in analysis");
+  renderSchematic(elements["schematic-view"], currentFields, currentQualities, currentResource, applySuggestion);
   fillSelect(elements.measure, numeric, false);
   fillSelect(elements.dimension, currentFields, true);
   elements["explore-section"].hidden = false;
@@ -602,6 +617,12 @@ elements["sample-button"].addEventListener("click", () => {
   elements["dataset-url"].value = sampleUrl;
   inspectUrl(sampleUrl);
 });
+
+document.querySelectorAll(".starter-list a").forEach((link) => link.addEventListener("click", (event) => {
+  event.preventDefault();
+  elements["dataset-url"].value = link.href;
+  inspectUrl(link.href);
+}));
 
 elements["cancel-resource-button"].addEventListener("click", () => resourceAbortController?.abort());
 
@@ -700,7 +721,6 @@ elements["plan-form"].addEventListener("submit", async (event) => {
     const remoteProvenance = remote ? { catalogOrigin: currentResource.catalogUrl, resourceId: currentResource.datastoreId, maxRows: result.maxRows, totalRowsReported: result.total, rowsScanned: result.scanned, truncated: result.truncated, requests: result.requests } : null;
     currentResult = { rows, plan, sql, vegaLiteSpec: null, remote, total: result.total, scanned: result.scanned, truncated: result.truncated, remoteProvenance };
     elements["query-output"].hidden = false;
-    renderSchematic(elements["schematic-view"], currentFields, currentQualities, currentResource);
     elements["result-explanation"].textContent = result.truncated ? `Incomplete preview only. The row budget stopped this query after ${result.scanned.toLocaleString()} of ${result.total.toLocaleString()} rows. Narrow the filters before interpreting or exporting an aggregate.` : describeResult(plan, { kind: plan.dimension ? "bar" : "table" }, rows.length, rows.length);
     elements["story-text"].textContent = result.truncated ? "No insight is generated from this incomplete aggregate." : resultStory(rows, plan);
     renderTable(elements["result-table"], rows, `${result.truncated ? "Incomplete preview" : "Result"} for: ${elements.question.value}`);

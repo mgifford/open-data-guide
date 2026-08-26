@@ -6,6 +6,13 @@ const fixtures = [
   ["dry well", "cnra-dry-well.csv", "County"],
 ];
 
+test("opens a CNRA starter inside the guide", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("link", { name: "Periodic Groundwater Level Measurements" }).click();
+  await expect(page.getByRole("heading", { name: /Periodic Groundwater Level Measurements/ })).toBeVisible();
+  await expect(page).toHaveURL(/127\.0\.0\.1/);
+});
+
 for (const [label, filename, expectedField] of fixtures) {
   test(`loads the ${label} fixture through production ingestion`, async ({ page }) => {
     await page.goto("/");
@@ -13,12 +20,13 @@ for (const [label, filename, expectedField] of fixtures) {
     await page.getByRole("button", { name: "Inspect dataset" }).click();
     await page.getByRole("button", { name: "Load selected resource" }).click();
     await expect(page.getByRole("heading", { name: "Data quality before analysis" })).toBeVisible();
-    await expect(page.getByRole("cell", { name: expectedField, exact: true })).toBeVisible();
+    await expect(page.locator("#quality-summary").getByRole("cell", { name: expectedField, exact: true })).toBeVisible();
     await page.getByRole("textbox", { name: "Question", exact: true }).fill(`count by ${expectedField}`);
     await page.getByRole("button", { name: "Interpret question" }).click();
     await page.getByRole("button", { name: "Run verified query" }).click();
     await expect(page.getByRole("heading", { name: "Dataset Overview" })).toBeVisible();
     await expect(page.getByRole("table", { name: `Result for: count by ${expectedField}` })).toBeVisible();
+    if (label === "bobcat") await expect(page.locator("#schematic-view")).toContainText("Location point");
     await expect(page.getByRole("button", { name: "Download CSV" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Download JSON" })).toBeVisible();
     if (label === "bobcat" || label === "dry well") {
