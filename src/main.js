@@ -17,6 +17,7 @@ import { shouldRefuseResource } from "./data/ingestion.js";
 import { datastoreResource, runDataStorePlan } from "./data/datastore.js";
 import { createActivityLog } from "./ui/activity.js";
 import { createJourney } from "./ui/journey.js";
+import { classifyLoadError, classifyResourceError } from "./ui/errors.js";
 import { analyzeJoinCandidate, joinPreview, validateJoinCandidate } from "./catalog/relationships.js";
 
 const elements = Object.fromEntries([
@@ -773,24 +774,6 @@ function loadLocalCsv(file) {
   renderDataset(dataset);
   journey.reach(2);
   setStatus(`Loaded ${file.name} from this computer. Choose Load selected resource to profile it locally.`, "info");
-}
-
-// Report resolve-time failures with a distinct, plain reason.
-function classifyLoadError(error) {
-  const message = error?.message || String(error);
-  if (/cross-origin|CORS/i.test(message)) return `Cross-origin (CORS) block: the catalog or file did not let this browser read it. ${message}`;
-  if (/HTTP or HTTPS|direct CSV, JSON, or Parquet/i.test(message)) return `Unsupported format or address: ${message}`;
-  if (/Failed to fetch|NetworkError|network/i.test(message)) return `Network failure: the request could not reach the source. Check the address and your connection. ${message}`;
-  return message;
-}
-
-// Report resource-load failures as CORS, unsupported format, network, or size.
-function classifyResourceError(error) {
-  const message = error?.message || String(error);
-  if (/refused|500 MB|too large|memory budget/i.test(message)) return `Size refusal: ${message}`;
-  if (/UTF-8|parse|read_csv|read_json|read_parquet|Invalid|unsupported format/i.test(message)) return `Unsupported or unreadable format: ${message}`;
-  if (/Failed to fetch|NetworkError|load failed/i.test(message)) return `Network or CORS failure: the browser could not fetch this resource. The source may block cross-origin requests or be unavailable. (${message})`;
-  return `The resource could not be loaded: ${message}. Check CORS support and file size.`;
 }
 
 async function inspectUrl(url) {
