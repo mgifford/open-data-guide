@@ -76,8 +76,9 @@ export async function loadResource(resource, options = {}) {
       const values = result.rows.map((row) => row[field.name]).filter((value) => value !== null && value !== undefined && value !== "");
       field.nullCount = result.rows.length - values.length;
       field.distinctCount = new Set(values.map(String)).size;
+      field.warnings = ["Missing and distinct counts are based on the preview rows only."];
     });
-    return { fields, preview: result.rows, filename: "", sourceDigest: "", quality: { rowCount: result.total, rawValuesRetained: false, remote: true, parseFailures: [] } };
+    return { fields, preview: result.rows, filename: "", sourceDigest: "", quality: { rowCount: result.total, previewRowCount: result.rows.length, rawValuesRetained: false, remote: true, profileScope: "preview", parseFailures: [] } };
   }
   const response = await fetch(resource.url, { signal: options.signal });
   if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);

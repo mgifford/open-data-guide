@@ -517,7 +517,7 @@ function renderProfile(profile) {
     [`${field.name}__null_count`, field.nullCount],
     [`${field.name}__distinct_count`, field.distinctCount],
   ]).filter(([, value]) => value !== undefined));
-  currentQualities.__row_count = profile.quality?.rowCount ?? profile.preview?.length ?? 0;
+  currentQualities.__row_count = profile.quality?.remote ? profile.quality.previewRowCount : profile.quality?.rowCount ?? profile.preview?.length ?? 0;
   const numeric = currentFields.filter((field) => !["postal-code", "zip-code", "zip-plus-four", "zcta", "fips"].includes(field.semanticRole) && /INT|DECIMAL|DOUBLE|FLOAT|REAL|NUMERIC|HUGEINT/i.test(field.type));
   elements["profile-summary"].replaceChildren();
   [["Fields", currentFields.length], ["Previewed rows", profile.preview.length], ["Numeric fields", numeric.length]].forEach(([label, value]) => {
@@ -538,8 +538,10 @@ function renderProfile(profile) {
   const qualityHeading = document.createElement("h3");
   qualityHeading.textContent = "Data quality before analysis";
   const qualityNote = document.createElement("p");
-  const parseNote = profile.quality?.parseFailures?.length ? ` ${profile.quality.parseFailures.length} malformed row(s) were reported and excluded from the typed projection; inspect the source before relying on totals.` : " No malformed rows were found in the profiled CSV text.";
-  qualityNote.textContent = `The resource contains ${profile.quality?.rowCount ?? "an unknown number of"} rows. Empty values and configured textual sentinels (None, NULL, null, N/A, NA, and Not supplied) are treated as missing for calculations.${parseNote} Raw CSV values remain queryable in the dataset_raw view.`;
+  const parseNote = profile.quality?.parseFailures?.length ? ` ${profile.quality.parseFailures.length} malformed row(s) were reported and excluded from the typed projection; inspect the source before relying on totals.` : "";
+  qualityNote.textContent = profile.quality?.remote
+    ? `The resource reports ${profile.quality.rowCount ?? "an unknown number of"} total rows. Missing and distinct counts below describe only the ${profile.quality.previewRowCount} preview rows returned by the DataStore, not the full resource.`
+    : `The resource contains ${profile.quality?.rowCount ?? "an unknown number of"} rows. Empty values and configured textual sentinels (None, NULL, null, N/A, NA, and Not supplied) are treated as missing for calculations.${parseNote} Raw CSV values remain queryable in the dataset_raw view.`;
   const qualityRows = currentFields.map((field) => ({
     field: field.name,
     semantic_role: field.semanticRole || "Not inferred",
