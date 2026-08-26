@@ -9,8 +9,24 @@ const GEOGRAPHIC_ROLES = new Set(["postal-code", "zip-code", "zip-plus-four", "z
 function classifyFieldRole(field) {
   if (TEMPORAL_TYPES.test(field.type)) return "temporal";
   if (field.semanticRole && GEOGRAPHIC_ROLES.has(field.semanticRole)) return "geographic";
-  if (field.type && (field.type.includes("DOUBLE") || field.type.includes("INTEGER"))) return "numeric";
+  if (field.type && /DOUBLE|INTEGER|INT|DECIMAL|NUMERIC|FLOAT|REAL|BIGINT|SMALLINT/i.test(field.type)) return "numeric";
   return "categorical";
+}
+
+function isTechnicalIdentifier(field) {
+  const name = String(field.name || "").toLowerCase();
+  if (!name) return true;
+  return /(^|_)(id|uuid|guid|key|code|index|seq|row|number)$/i.test(name) || /(^|_)(id|code|key)$/.test(name);
+}
+
+function scoreCandidateField(field) {
+  const name = String(field.name || "").toLowerCase();
+  let score = 0;
+  if (/(county|district|basin|waterbody|stream|site|station|well|project|study|name|type|status)/i.test(name)) score += 4;
+  if (/(date|time|year)/i.test(name)) score += 3;
+  if (/(county|basin|well|station|site|name)/i.test(name)) score += 2;
+  if (/(id|code|uuid|guid|key|index|row|seq)/i.test(name)) score -= 5;
+  return score;
 }
 
 function suggestion(label, plan, why) {
@@ -124,8 +140,12 @@ export function renderSchematic(container, fields = [], qualities = {}, resource
   const suggestedList = document.createElement("ul");
   
   // Generate only plans the deterministic query engine can execute.
-  const categoricalFields = fields.filter((f) => classifyFieldRole(f) === "categorical");
-  const numericFields = fields.filter((f) => classifyFieldRole(f) === "numeric");
+  const categoricalFields = fields
+    .filter((f) => classifyFieldRole(f) === "categorical" && !isTechnicalIdentifier(f))
+    .sort((a, b) => scoreCandidateField(b) - scoreCandidateField(a));
+  const numericFields = fields
+    .filter((f) => classifyFieldRole(f) === "numeric" && !isTechnicalIdentifier(f))
+    .sort((a, b) => scoreCandidateField(b) - scoreCandidateField(a));
   const suggestions = [suggestion("How many records are in this dataset?", { aggregation: "count", measure: "", dimension: "", timeField: "", filters: [], limit: 100 }, "Returns one total.")];
 
   if (categoricalFields.length) {

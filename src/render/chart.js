@@ -9,13 +9,14 @@ export function chartRowsFor(rows, limit = CHART_DISPLAY_LIMIT) {
   return other && !visible.includes(other) ? [...visible.slice(0, limit - 1), other] : visible;
 }
 
-export function chartKindFor(plan, fields = []) {
+export function chartKindFor(plan, fields = [], rows = []) {
   const dimension = fields.find((field) => field.name === plan.dimension);
   const isTemporal = plan.timeField === plan.dimension || /DATE|TIME|TIMESTAMP/i.test(dimension?.type || "") || dimension?.semanticRole === "time";
   const latitudeField = fields.find((field) => field.semanticRole === "latitude" || /^(lat|latitude)$/i.test(field.name));
   const longitudeField = fields.find((field) => field.semanticRole === "longitude" || /^(lon|long|longitude)$/i.test(field.name));
+  const hasMapCoordinates = rows.some((row) => Number.isFinite(Number(row.latitude)) && Number.isFinite(Number(row.longitude)));
   if (isTemporal && plan.timeField === plan.dimension) return "line";
-  if (latitudeField && longitudeField) return "map";
+  if (latitudeField && longitudeField && (rows.length ? hasMapCoordinates : true)) return "map";
   return "bar";
 }
 

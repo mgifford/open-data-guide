@@ -99,6 +99,22 @@ describe("visualization advisor", () => {
     expect(advice.warnings[0].toLowerCase()).toContain("accessible");
   });
 
+  it("does not recommend a map when result rows do not include latitude and longitude values", () => {
+    const plan = { aggregation: "count", dimension: "site_code" };
+    const fields = [
+      { name: "site_code", type: "VARCHAR" },
+      { name: "latitude", type: "DOUBLE", semanticRole: "latitude" },
+      { name: "longitude", type: "DOUBLE", semanticRole: "longitude" },
+    ];
+    const rows = [
+      { category: "A-01", value: 1 },
+      { category: "A-02", value: 1 },
+    ];
+    const advice = adviseChartKind(plan, fields, rows);
+    expect(advice.kind).toBe("bar");
+    expect(advice.reason.toLowerCase()).toContain("categorical");
+  });
+
   it("returns table for no dimension", () => {
     const plan = { aggregation: "count" };
     const advice = adviseChartKind(plan, basicFields, [{ value: 1000 }]);

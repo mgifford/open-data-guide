@@ -27,6 +27,7 @@ for (const [label, filename, expectedField] of fixtures) {
     await expect(page.getByRole("heading", { name: "Dataset Overview" })).toBeVisible();
     await expect(page.getByRole("table", { name: `Result for: count by ${expectedField}` })).toBeVisible();
     if (label === "bobcat") await expect(page.locator("#schematic-view")).toContainText("Location point");
+    if (label === "bobcat") await expect(page.locator("#chart svg circle")).toHaveCount(2);
     await expect(page.getByRole("button", { name: "Download CSV" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Download JSON" })).toBeVisible();
     if (label === "bobcat" || label === "dry well") {
