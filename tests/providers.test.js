@@ -1,5 +1,22 @@
 import { describe, expect, it, vi } from "vitest";
-import { createChromePromptProvider, createHuggingFaceProvider, deterministicProvider, providerDecision, validateProviderPlan } from "../src/ai/providers.js";
+import { createChromePromptProvider, createHuggingFaceProvider, deterministicProvider, localModelSupported, providerDecision, validateProviderPlan } from "../src/ai/providers.js";
+
+// Minimal fake of a module worker: routes postMessage to a responder that emits
+// the messages the real worker would, so the provider can be tested without CDN.
+function fakeWorker(respond) {
+  const listeners = { message: new Set(), error: new Set() };
+  return {
+    addEventListener: (type, handler) => listeners[type]?.add(handler),
+    removeEventListener: (type, handler) => listeners[type]?.delete(handler),
+    terminate: () => { listeners.message.clear(); listeners.error.clear(); },
+    postMessage: (data) => {
+      respond(data, {
+        message: (payload) => listeners.message.forEach((handler) => handler({ data: payload })),
+        error: (payload) => listeners.error.forEach((handler) => handler(payload)),
+      });
+    },
+  };
+}
 
 describe("analysis plan providers", () => {
   const fields = [{ name: "state", type: "VARCHAR" }, { name: "amount_usd", type: "DOUBLE" }];
@@ -45,6 +62,46 @@ describe("analysis plan providers", () => {
     const provider = createHuggingFaceProvider();
     expect((await provider.availability()).status).toBe("downloadable");
     await expect(provider.plan({ question: "count by state", dataset: {}, fields })).rejects.toThrow(/approval/);
+  });
+
+  it("reports local model support from a WebGPU signal", () => {
+    expect(localModelSupported({ navigator: { gpu: {} } })).toBe(true);
+    expect(localModelSupported({ navigator: {} })).toBe(false);
+  });
+
+  it("runs the local model through a background worker and never on the main thread", async () => {
+    let received = null;
+    const provider = createHuggingFaceProvider({
+      approved: true,
+      device: "webgpu",
+      createWorker: () => fakeWorker((data, emit) => {
+        received = data;
+        emit.message({ id: data.id, type: "result", text: JSON.stringify({ version: 1, status: "ready", question: "count by state", aggregation: "count", measure: "", dimension: "state", filters: [], limit: 100, visualization: { kind: "bar", x: "state", y: "value", series: null } }) });
+      }),
+    });
+    const plan = await provider.plan({ question: "count by state", dataset: {}, fields });
+    expect(plan.aggregation).toBe("count");
+    expect(plan.modelBackend).toBe("huggingface-local");
+    // The request must go to the worker, carrying the WebGPU device and pinned model.
+    expect(received.type).toBe("generate");
+    expect(received.device).toBe("webgpu");
+    expect(received.modelId).toBeTruthy();
+    await provider.close();
+  });
+
+  it("rejects the local model request when its signal is aborted", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const provider = createHuggingFaceProvider({ approved: true, signal: controller.signal, createWorker: () => fakeWorker(() => {}) });
+    await expect(provider.plan({ question: "count by state", dataset: {}, fields })).rejects.toMatchObject({ name: "AbortError" });
+  });
+
+  it("surfaces a worker error as a rejected plan", async () => {
+    const provider = createHuggingFaceProvider({
+      approved: true,
+      createWorker: () => fakeWorker((data, emit) => emit.message({ id: data.id, type: "error", message: "model failed to load", name: "Error" })),
+    });
+    await expect(provider.plan({ question: "count by state", dataset: {}, fields })).rejects.toThrow(/model failed to load/);
   });
 
   it("validates ready and clarification plans independently", () => {
