@@ -95,6 +95,10 @@ pre { white-space: pre-wrap; word-break: break-word; background: var(--backgroun
 .saved-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
 .ai-summary { border-left: .3rem solid var(--accent); padding: .5rem 0 .5rem 1rem; margin-block: .75rem; }
 .ai-summary h5 { margin: 0 0 .25rem; }
+.ai-approval { border: 1px solid var(--border); border-radius: .5rem; padding: 1rem; margin-block: .75rem; }
+.ai-approval h5 { margin: 0 0 .5rem; }
+.followups { margin-block: 1rem; }
+.followups h5 { margin: 0 0 .5rem; }
 .filters { margin-block: 1rem; }
 .filters-heading { font-weight: 700; margin: 0 0 .25rem; }
 .filter-row { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin-block: .5rem; }

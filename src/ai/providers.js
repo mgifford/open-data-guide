@@ -126,7 +126,7 @@ export function createChromePromptProvider(root = globalThis, options = {}) {
       validateProviderPlan(plan, input.fields);
       return plan;
     },
-    async summarize({ plan, rows }) {
+    async summarize({ packet }) {
       if (!languageModel || typeof languageModel.create !== "function") throw new Error("Browser-provided AI is not available.");
       const availability = await this.availability();
       if (!availability.ready) throw new Error("Browser-provided AI is not ready. Approve its browser-managed download before summarizing.");
@@ -139,7 +139,7 @@ export function createChromePromptProvider(root = globalThis, options = {}) {
           return await session.prompt(prompt, { signal: options.signal });
         }
       };
-      return summarizeResult({ plan, rows, generate });
+      return summarizeResult({ packet, generate });
     },
     async prepare(onProgress) {
       if (!languageModel || typeof languageModel.create !== "function") throw new Error("Browser-provided AI is not available.");
@@ -192,7 +192,7 @@ export function createHuggingFaceProvider(options = {}) {
       validateProviderPlan(plan, input.fields);
       return { ...plan, modelBackend: "huggingface-local", modelIdentifier: LOCAL_MODEL.id, modelVersion: LOCAL_MODEL.revision };
     },
-    async summarize({ plan, rows }) {
+    async summarize({ packet }) {
       if (options.approved !== true) throw new Error("Local model use requires explicit approval.");
       if (!generator) {
         const { pipeline } = await import(/* @vite-ignore */ "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1");
@@ -202,7 +202,7 @@ export function createHuggingFaceProvider(options = {}) {
         const output = await generator(prompt, { max_new_tokens: 220, temperature: 0, do_sample: false, return_full_text: false, signal: options.signal });
         return Array.isArray(output) ? output[0]?.generated_text || "" : String(output || "");
       };
-      return summarizeResult({ plan, rows, generate });
+      return summarizeResult({ packet, generate });
     },
     async close() {
       generator = null;

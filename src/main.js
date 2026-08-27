@@ -18,6 +18,10 @@ import { datastoreResource, runDataStorePlan } from "./data/datastore.js";
 import { createActivityLog } from "./ui/activity.js";
 import { createJourney } from "./ui/journey.js";
 import { classifyLoadError, classifyResourceError } from "./ui/errors.js";
+import { buildFactPacket } from "./ai/summary.js";
+
+const LOCAL_MODEL_ID = "onnx-community/Qwen2.5-0.5B-Instruct";
+const LOCAL_MODEL_REVISION = "cc5cc01a65cc3ff17bdb73a7de33d879f62599b0";
 import { analyzeJoinCandidate, joinPreview, validateJoinCandidate, joinComparison } from "./catalog/relationships.js";
 
 const elements = Object.fromEntries([
@@ -33,7 +37,9 @@ const elements = Object.fromEntries([
   "custom-catalog-form", "custom-catalog-name", "test-catalog-button", "save-catalog-button", "catalog-detection", "custom-catalog-list",
   "history-search-form", "history-query", "history-list", "export-button",
   "import-input", "clear-data-button", "storage-summary", "story-text", "export-receipt", "clarification-output",
-  "ai-summary", "ai-summary-text", "ai-summary-note", "ai-summary-button",
+  "ai-summary", "ai-summary-text", "ai-summary-scope", "ai-summary-note", "ai-summary-button", "ai-summary-regenerate", "ai-summary-remove",
+  "ai-approval", "ai-approval-details", "ai-approval-progress", "ai-approve-button", "ai-approval-cancel", "ai-approval-retry",
+  "followups", "followups-list",
   "cancel-resource-button", "resource-status", "cancel-query-button", "query-status",
   "activity-list", "copy-diagnostics-button", "download-diagnostics-button", "clear-diagnostics-button", "diagnostics-status",
   "join-section", "join-form", "join-target", "join-source-field", "join-target-field", "join-evidence", "join-confirmation", "join-confirm-checkbox", "join-confirm-button", "join-result",
@@ -54,6 +60,9 @@ let pendingHistoryRecord = null;
 let pendingHistoryPlan = null;
 let catalogSeenKeys = new Set();
 let activePlannerProvenance = { modelBackend: "deterministic", modelIdentifier: "", modelVersion: "" };
+let aiSummaryController = null;
+let pendingSummaryOption = null;
+let currentQueryRecordId = null;
 let plannerAbortController = null;
 let activePlan = null;
 let activePlanner = null;
@@ -933,6 +942,8 @@ elements["plan-form"].addEventListener("submit", async (event) => {
     elements["story-text"].textContent = result.truncated ? "No insight is generated from this incomplete aggregate." : resultStory(rows, plan);
     resetAiSummary();
     elements["ai-summary-button"].hidden = result.truncated || !rows.length;
+    renderFollowups();
+    elements["followups"].hidden = result.truncated || !rows.length;
     renderTable(elements["result-table"], rows, `${result.truncated ? "Incomplete preview" : "Result"} for: ${elements.question.value}`);
     if (!result.truncated) {
       const { renderChart } = await import("./render/chart.js");
@@ -953,8 +964,9 @@ elements["plan-form"].addEventListener("submit", async (event) => {
       ["Model identity", activePlannerProvenance.modelBackend === "deterministic" ? "Not applicable" : activePlannerProvenance.modelIdentifier || "Not disclosed by browser"],
       ["Calculated", new Date().toISOString()],
     ]);
+    currentQueryRecordId = crypto.randomUUID();
     await putRecord("queries", {
-      id: crypto.randomUUID(),
+      id: currentQueryRecordId,
       version: 1,
       question: elements.question.value,
       normalizedQuestion: elements.question.value.toLowerCase().trim(),
@@ -1602,53 +1614,174 @@ async function runHuggingFacePlanner() {
 }
 
 function resetAiSummary() {
+  aiSummaryController?.abort();
+  aiSummaryController = null;
+  pendingSummaryOption = null;
   elements["ai-summary"].hidden = true;
+  elements["ai-approval"].hidden = true;
   elements["ai-summary-text"].textContent = "";
+  elements["ai-summary-scope"].textContent = "";
   elements["ai-summary-note"].textContent = "";
+  elements["ai-approval-progress"].textContent = "";
+  elements["ai-approval-retry"].hidden = true;
 }
 
-// Narrate an already-computed result with an approved AI provider. The deterministic
-// summary above always remains; a rejected or missing summary changes nothing else.
-async function runAiSummary() {
+// Offer bounded next steps instead of an open-ended chatbot.
+function renderFollowups() {
+  const actions = [
+    ["Ask another question", () => { elements["question-section"].scrollIntoView({ behavior: "smooth", block: "start" }); elements.question.focus(); }],
+    ["Add or change a filter", () => { addFilterRow(); validateCurrentControls(); elements["plan-form"].scrollIntoView({ behavior: "smooth", block: "start" }); }],
+    ["Change grouping or date grain", () => { elements["plan-form"].scrollIntoView({ behavior: "smooth", block: "start" }); elements.dimension.focus(); }],
+    ["Try a suggested question", () => { elements["schematic-view"].scrollIntoView({ behavior: "smooth", block: "start" }); }],
+    ["Find related datasets", () => { elements["related-list"].scrollIntoView({ behavior: "smooth", block: "start" }); }],
+    ["Compare with a saved dataset", () => { (elements["join-section"].hidden ? elements["saved-list"] : elements["join-section"]).scrollIntoView({ behavior: "smooth", block: "start" }); }],
+  ];
+  elements["followups-list"].replaceChildren();
+  actions.forEach(([label, handler]) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "button-secondary compact-button";
+    button.textContent = label;
+    button.addEventListener("click", handler);
+    elements["followups-list"].append(button);
+  });
+}
+
+// Describe the AI option the capability probe found, without downloading anything.
+function describeSummaryOption(decision) {
+  if (decision.queryPlanner === "browser-ready") {
+    return { kind: "browser", label: "Browser-provided AI", needsDownload: false, rows: [
+      ["Provider", "Browser-provided AI (Prompt API)"],
+      ["Model", "Browser-managed; the identifier is not disclosed to the page"],
+      ["Download", "None; the model is already available"],
+      ["Hosting", "Browser-managed"],
+      ["Caching and removal", "Managed by your browser; remove it through your browser site settings"],
+    ] };
+  }
+  if (decision.queryPlanner === "browser-downloadable") {
+    return { kind: "browser-download", label: "Browser-provided AI", needsDownload: true, rows: [
+      ["Provider", "Browser-provided AI (Prompt API)"],
+      ["Model", "Browser-managed; the identifier is not disclosed to the page"],
+      ["Download", "Browser-managed model download, started only after you approve it"],
+      ["Hosting", "Browser-managed"],
+      ["Caching and removal", "Managed by your browser; remove it through your browser site settings"],
+    ] };
+  }
+  return { kind: "local", label: "Local Hugging Face model", needsDownload: true, rows: [
+    ["Provider", "Local Hugging Face model"],
+    ["Model", `${LOCAL_MODEL_ID} (revision ${LOCAL_MODEL_REVISION})`],
+    ["Download", "About 500 MB, started only after you approve it"],
+    ["Hosting", "Downloaded from the Hugging Face CDN and cached by your browser"],
+    ["Caching and removal", "Cached by your browser; remove it through site settings or Delete local application data"],
+  ] };
+}
+
+// Open the inline approval panel. Capability detection never downloads a model.
+async function openAiApproval() {
   if (!currentResult || !currentResult.rows?.length || currentResult.truncated) {
-    setStatus("Run a complete query before requesting an AI summary.", "error", elements["query-status"]);
+    setStatus("Only a complete result can receive an AI explanation.", "error", elements["query-status"]);
     return;
   }
-  const button = elements["ai-summary-button"];
-  button.disabled = true;
-  setStatus("Checking for approved browser AI, then summarizing the computed result...", "info", elements["query-status"]);
-  const controller = new AbortController();
-  let provider = null;
+  resetAiSummary();
+  setStatus("Checking page-accessible AI. No model is downloaded during this check.", "info", elements["query-status"]);
   try {
     const { probeBrowserCapabilities, capabilityDecision } = await import("./ai/browser-capabilities.js");
     const decision = capabilityDecision(await probeBrowserCapabilities(window));
-    const { createChromePromptProvider, createHuggingFaceProvider } = await import("./ai/providers.js");
-    let backend;
-    if (decision.queryPlanner === "browser-ready") {
-      provider = createChromePromptProvider(window, { signal: controller.signal });
-      backend = "Browser-provided AI";
-    } else if (window.confirm("No ready browser AI was found. Download and run the optional local Hugging Face model (about 500 MB, browser-managed) to summarize this result?")) {
-      provider = createHuggingFaceProvider({ approved: true, signal: controller.signal });
-      backend = "Local Hugging Face model";
-    } else {
-      setStatus("No AI summary was created. The deterministic summary remains.", "info", elements["query-status"]);
-      return;
-    }
-    const summary = await provider.summarize({ plan: currentResult.plan, rows: currentResult.rows });
-    elements["ai-summary-text"].textContent = summary;
-    elements["ai-summary-note"].textContent = `Generated by ${backend}. It describes the computed result only; the deterministic summary and table above remain the source of truth.`;
-    elements["ai-summary"].hidden = false;
-    setStatus("AI summary added below the deterministic summary.", "info", elements["query-status"]);
+    const option = describeSummaryOption(decision);
+    pendingSummaryOption = option;
+    metadataList(elements["ai-approval-details"], option.rows);
+    elements["ai-approve-button"].textContent = option.needsDownload ? "Approve download and generate" : "Approve and generate";
+    elements["ai-approval-progress"].textContent = "";
+    elements["ai-approval-retry"].hidden = true;
+    elements["ai-approval"].hidden = false;
+    elements["ai-approve-button"].focus();
+    setStatus("Review the AI model details, then approve to generate an explanation.", "info", elements["query-status"]);
   } catch (error) {
-    resetAiSummary();
-    setStatus(`AI summary was not added: ${error.message} The deterministic summary and table are unchanged.`, "error", elements["query-status"]);
-  } finally {
-    await provider?.close?.();
-    button.disabled = false;
+    setStatus(`AI capability check failed: ${error.message}`, "error", elements["query-status"]);
   }
 }
 
-elements["ai-summary-button"].addEventListener("click", runAiSummary);
+async function generateAiSummary() {
+  if (!pendingSummaryOption || !currentResult) return;
+  const option = pendingSummaryOption;
+  aiSummaryController = new AbortController();
+  elements["ai-approve-button"].disabled = true;
+  elements["ai-approval-retry"].hidden = true;
+  const progress = elements["ai-approval-progress"];
+  progress.textContent = option.needsDownload ? "Approved. Preparing the model; this may take time…" : "Approved. Generating an explanation…";
+  let provider = null;
+  try {
+    const { createChromePromptProvider, createHuggingFaceProvider } = await import("./ai/providers.js");
+    if (option.kind === "local") {
+      provider = createHuggingFaceProvider({ approved: true, signal: aiSummaryController.signal, onProgress: (event) => { if (event?.status === "progress" && event.progress) progress.textContent = `Downloading the local model: ${Math.round(event.progress)}%`; } });
+    } else {
+      provider = createChromePromptProvider(window, { signal: aiSummaryController.signal });
+      if (option.needsDownload) await provider.prepare((event) => { progress.textContent = `Browser-managed model download: ${Math.round(Number(event) * 100)}%`; });
+    }
+    const packet = buildFactPacket(currentResult.plan, currentResult);
+    const summary = await provider.summarize({ packet });
+    const provenance = {
+      provider: option.kind === "local" ? "huggingface-local" : "browser-prompt",
+      model: option.kind === "local" ? `${LOCAL_MODEL_ID}@${LOCAL_MODEL_REVISION}` : "browser-managed",
+      factPacketVersion: summary.schemaVersion,
+      text: summary.text,
+      validation: "passed",
+      scope: summary.scope,
+      resultDigest: currentResult.sql || "",
+      generatedAt: new Date().toISOString(),
+    };
+    renderAiSummary(summary, option.label, provenance);
+    await storeSummaryProvenance(provenance);
+    elements["ai-approval"].hidden = true;
+    setStatus("AI explanation added below the deterministic summary.", "info", elements["query-status"]);
+  } catch (error) {
+    const cancelled = error.name === "AbortError" || aiSummaryController?.signal.aborted;
+    progress.textContent = cancelled ? "Cancelled. No explanation was generated." : `Not generated: ${error.message}`;
+    elements["ai-approval-retry"].hidden = cancelled;
+    setStatus(cancelled ? "AI explanation cancelled. The deterministic summary remains." : `AI explanation was not added: ${error.message} The deterministic summary and table are unchanged.`, cancelled ? "info" : "error", elements["query-status"]);
+  } finally {
+    await provider?.close?.();
+    elements["ai-approve-button"].disabled = false;
+    aiSummaryController = null;
+  }
+}
+
+function renderAiSummary(summary, backendLabel, provenance) {
+  elements["ai-summary-text"].textContent = summary.text;
+  elements["ai-summary-scope"].textContent = summary.scope.coversCompleteResult
+    ? `Scope: this explanation covers the complete result (${summary.scope.rowCount} row(s)).`
+    : `Scope: this explanation covers only the first ${summary.scope.pairsListed} of ${summary.scope.rowCount} rows shown.`;
+  elements["ai-summary-note"].textContent = `Generated by ${backendLabel} at ${new Date(provenance.generatedAt).toLocaleString()}, validated against the deterministic fact packet. The deterministic summary and table above remain the source of truth.`;
+  elements["ai-summary"].hidden = false;
+}
+
+async function storeSummaryProvenance(provenance) {
+  if (!currentQueryRecordId) return;
+  const records = await listRecords("queries");
+  const record = records.find((entry) => entry.id === currentQueryRecordId);
+  if (!record) return;
+  record.aiSummary = provenance;
+  await putRecord("queries", record);
+}
+
+elements["ai-summary-button"].addEventListener("click", openAiApproval);
+elements["ai-approve-button"].addEventListener("click", generateAiSummary);
+elements["ai-approval-retry"].addEventListener("click", generateAiSummary);
+elements["ai-approval-cancel"].addEventListener("click", () => {
+  aiSummaryController?.abort();
+  elements["ai-approval"].hidden = true;
+  setStatus("AI model approval cancelled. The deterministic summary remains.", "info", elements["query-status"]);
+});
+elements["ai-summary-regenerate"].addEventListener("click", () => { resetAiSummary(); openAiApproval(); });
+elements["ai-summary-remove"].addEventListener("click", async () => {
+  resetAiSummary();
+  if (currentQueryRecordId) {
+    const records = await listRecords("queries");
+    const record = records.find((entry) => entry.id === currentQueryRecordId);
+    if (record && record.aiSummary) { delete record.aiSummary; await putRecord("queries", record); }
+  }
+  setStatus("AI explanation removed. The deterministic summary remains.", "info", elements["query-status"]);
+});
 
 elements["semantic-button"].addEventListener("click", async () => {
   setStatus("Checking page-accessible browser AI interfaces. This checks availability only; no model download or source-data transfer has been requested...");

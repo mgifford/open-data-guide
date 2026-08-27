@@ -209,12 +209,31 @@
           <section class="story" aria-labelledby="story-heading">
             <h4 id="story-heading">What this result says</h4>
             <p id="story-text"></p>
-            <div id="ai-summary" class="ai-summary" role="group" aria-labelledby="ai-summary-heading" hidden>
-              <h5 id="ai-summary-heading">AI-generated summary</h5>
-              <p id="ai-summary-text" aria-live="polite"></p>
-              <p id="ai-summary-note" class="field-note"></p>
+            <button id="ai-summary-button" class="button-secondary" type="button" hidden>Explain this result with AI</button>
+            <div id="ai-approval" class="ai-approval" role="group" aria-labelledby="ai-approval-heading" hidden>
+              <h5 id="ai-approval-heading">Approve an AI model</h5>
+              <dl id="ai-approval-details" class="metadata"></dl>
+              <p id="ai-approval-progress" class="status" role="status" aria-live="polite"></p>
+              <div class="operation-actions">
+                <button id="ai-approve-button" type="button">Approve and generate</button>
+                <button id="ai-approval-cancel" class="button-secondary" type="button">Cancel</button>
+                <button id="ai-approval-retry" class="button-secondary" type="button" hidden>Retry</button>
+              </div>
             </div>
-            <button id="ai-summary-button" class="button-secondary" type="button" hidden>Summarize this result with AI</button>
+            <div id="ai-summary" class="ai-summary" role="group" aria-labelledby="ai-summary-heading" hidden>
+              <h5 id="ai-summary-heading">AI explanation</h5>
+              <p id="ai-summary-text" aria-live="polite"></p>
+              <p id="ai-summary-scope" class="field-note"></p>
+              <p id="ai-summary-note" class="field-note"></p>
+              <div class="saved-actions">
+                <button id="ai-summary-regenerate" class="button-secondary compact-button" type="button">Regenerate summary</button>
+                <button id="ai-summary-remove" class="button-secondary compact-button" type="button">Remove summary</button>
+              </div>
+            </div>
+            <div id="followups" class="followups" role="group" aria-labelledby="followups-heading" hidden>
+              <h5 id="followups-heading">Bounded next steps</h5>
+              <div id="followups-list" class="saved-actions"></div>
+            </div>
           </section>
           <div class="result-actions" aria-label="Result downloads">
             <button id="download-csv-button" type="button">Download CSV</button>
