@@ -49,7 +49,7 @@ npm run preview
 
 ## Important limits
 
-- Browser requests still depend on the publisher allowing cross-origin access. A static site cannot bypass CORS.
+- Browser requests still depend on the publisher allowing cross-origin access. A static site cannot bypass CORS. Built-in catalogs that a health check confirmed block cross-origin browser requests (currently Data.gov) are shown but not selectable, and pasting one of their dataset URLs returns a specific explanation rather than a generic fetch failure.
 - Large CSV files can exceed practical browser memory or take a long time to scan. The app warns when a publisher or `Content-Length` header identifies a large file.
 - The question interpreter is deterministic, not a general AI analyst. It handles a narrow grammar and requires the user to review the selected fields.
 - The chart is never the only answer. The result table and generated SQL are the primary reproducibility artifacts.
@@ -57,6 +57,7 @@ npm run preview
 - The sample data is synthetic and exists only to test the interface.
 - Optional semantic matching loads a pinned Transformers.js browser module from jsDelivr and model files from Hugging Face. The core application does not contact either service. A production deployment can self-host these files.
 - Browser capability detection checks `availability()` but does not call `create()`. A `downloadable` result is shown to the user without starting the browser-managed model download; preparation begins only after explicit approval and exposes progress, cancellation, and retry states.
+- The optional local Hugging Face model runs in a Web Worker and is offered only when the browser exposes WebGPU, so its download and inference cannot freeze the page. Without WebGPU the local option is withheld and the deterministic summary remains authoritative.
 
 ## Why this is a new project
 

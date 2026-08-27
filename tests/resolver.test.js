@@ -1,10 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { connectorFor, inferFormat, loadDataDictionary, normalizeCkan, normalizeDcat, normalizeDkan, searchCkanCatalogPage, searchDkanCatalogPage } from "../src/adapters/resolver.js";
+import { connectorFor, inferFormat, loadDataDictionary, normalizeCkan, normalizeDcat, normalizeDkan, resolveDataset, searchCkanCatalogPage, searchDkanCatalogPage } from "../src/adapters/resolver.js";
 
 describe("dataset adapters", () => {
   it("infers supported formats without trusting query parameters", () => {
     expect(inferFormat("https://example.gov/data.csv?download=1")).toBe("csv");
     expect(inferFormat("https://example.gov/resource", "PARQUET")).toBe("parquet");
+  });
+
+  it("refuses a known CORS-blocked catalog dataset URL with a specific reason, without fetching", async () => {
+    let fetched = false;
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => { fetched = true; throw new Error("should not be called"); };
+    try {
+      await expect(resolveDataset("https://catalog.data.gov/dataset/medicaid-spending-by-drug")).rejects.toThrow(/Data\.gov blocks cross-origin/);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+    expect(fetched).toBe(false);
   });
 
   it("normalizes a DKAN dataset and data dictionary", () => {

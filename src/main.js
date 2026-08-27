@@ -5,7 +5,7 @@ import {
   exportWorkspace, importWorkspace, clearWorkspace, storageEstimate,
   listCustomCatalogs, saveCustomCatalog, removeCustomCatalog,
 } from "./catalog/storage.js";
-import { listBuiltinCatalogs, getBuiltinCatalog, detectCatalog, normalizeCustomCatalog, DEFAULT_CATALOG_ID } from "./catalog/catalogs.js";
+import { listBuiltinCatalogs, getBuiltinCatalog, detectCatalog, normalizeCustomCatalog, catalogBrowserBlocked, DEFAULT_CATALOG_ID } from "./catalog/catalogs.js";
 import { catalogSearchTerms, explainRelatedDataset, relatedDatasets } from "./catalog/related.js";
 import { compareFields, historyStatus, sourceChanged } from "./catalog/history.js";
 import { compilePlan, interpretQuestion, validatePlan } from "./query/plan.js";
@@ -460,6 +460,10 @@ async function searchCatalog(start = 0) {
   if (start === 0) catalogSeenKeys = new Set();
   if (!activeCatalog) {
     setStatus("Choose a catalog to search.", "error");
+    return;
+  }
+  if (catalogBrowserBlocked(activeCatalog)) {
+    setStatus(`${activeCatalog.name} blocks cross-origin browser requests, so it cannot be searched from this static site. ${activeCatalog.knownLimitations}`, "error");
     return;
   }
   const catalogUrl = activeCatalog.baseUrl;
@@ -1300,7 +1304,9 @@ async function refreshCatalogPicker(selectId) {
     builtins.forEach((catalog) => {
       const option = document.createElement("option");
       option.value = catalog.id;
-      option.textContent = `${catalog.name} (${catalog.platform})`;
+      const blocked = catalogBrowserBlocked(catalog);
+      option.textContent = blocked ? `${catalog.name} (${catalog.platform}) — blocks browser access` : `${catalog.name} (${catalog.platform})`;
+      option.disabled = blocked;
       group.append(option);
     });
     select.append(group);
@@ -1316,7 +1322,10 @@ async function refreshCatalogPicker(selectId) {
     });
     select.append(group);
   }
-  const chosen = all.find((catalog) => catalog.id === previous) || all.find((catalog) => catalog.id === DEFAULT_CATALOG_ID) || all[0];
+  // Never land the selection on a catalog that blocks browser access.
+  const selectable = all.filter((catalog) => !catalogBrowserBlocked(catalog));
+  const requested = all.find((catalog) => catalog.id === previous);
+  const chosen = (requested && !catalogBrowserBlocked(requested) ? requested : null) || selectable.find((catalog) => catalog.id === DEFAULT_CATALOG_ID) || selectable[0] || all[0];
   if (chosen) {
     select.value = chosen.id;
     renderCatalogDetails(chosen);
