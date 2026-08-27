@@ -9,11 +9,11 @@
 - On-demand code splitting for the DuckDB and chart modules, and cancellable local and remote queries.
 - Browser-side catalog health check (`npm run test:catalog-health`) that records verified dates in `lastVerified`.
 - Optional AI-assisted result summaries that narrate an already-computed result, with a number-grounding guardrail; the deterministic summary always remains.
+- Bounded, deterministic multi-dataset comparison joined from confirmed preview snapshots (no arbitrary SQL, no full-data join).
 - CNRA data-catalog exploration matrix.
 
 ## Next
 
-- Phase 8B Track B: bounded, deterministic multi-dataset comparison computed from confirmed join reviews (no arbitrary SQL, no full-data join).
 - Add deeper Playwright keyboard/reflow/forced-colors checks and manual browser AI verification.
 - Restore Data.gov browser access once a CORS-enabled endpoint or proxy is available; it is currently CORS-blocked for browser API requests.
 

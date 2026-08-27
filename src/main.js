@@ -18,7 +18,7 @@ import { datastoreResource, runDataStorePlan } from "./data/datastore.js";
 import { createActivityLog } from "./ui/activity.js";
 import { createJourney } from "./ui/journey.js";
 import { classifyLoadError, classifyResourceError } from "./ui/errors.js";
-import { analyzeJoinCandidate, joinPreview, validateJoinCandidate } from "./catalog/relationships.js";
+import { analyzeJoinCandidate, joinPreview, validateJoinCandidate, joinComparison } from "./catalog/relationships.js";
 
 const elements = Object.fromEntries([
   "dataset-form", "dataset-url", "sample-button", "local-csv-input", "status", "dataset-section", "dataset-heading",
@@ -1148,12 +1148,25 @@ elements["join-confirm-button"].addEventListener("click", async () => {
   validateJoinCandidate(joinEvidence, { confirmed: true });
   const counts = joinPreview(currentDataset.joinSnapshot, joinTargetDataset.joinSnapshot, joinEvidence.sourceField, joinEvidence.targetField);
   const provenance = { id: crypto.randomUUID(), version: 1, sourceDatasetKey: currentDataset.key, targetDatasetKey: joinTargetDataset.key, sourceResourceUrl: currentDataset.joinSnapshot.resourceUrl, targetResourceUrl: joinTargetDataset.joinSnapshot.resourceUrl, sourceField: joinEvidence.sourceField, targetField: joinEvidence.targetField, expectedCardinality: joinEvidence.expectedCardinality, scope: "bounded-preview", ...counts, confirmedAt: new Date().toISOString() };
+  const comparison = joinComparison(currentDataset.joinSnapshot, joinTargetDataset.joinSnapshot, joinEvidence.sourceField, joinEvidence.targetField, { sourceLabel: currentDataset.title || "This dataset", targetLabel: joinTargetDataset.title || "Saved dataset", limit: 50 });
+  provenance.comparisonPreview = comparison.rows;
+  provenance.matchedPairs = comparison.matchedPairs;
+  provenance.comparisonTruncated = comparison.truncated;
   await putRecord("relationships", provenance);
   const heading = document.createElement("h3");
   heading.textContent = "Confirmed bounded join review";
   const note = document.createElement("p");
   note.textContent = "Saved the relationship marker, unmatched-row counts, and join provenance. This does not execute or endorse a full-data join.";
-  elements["join-result"].replaceChildren(heading, note);
+  const comparisonNote = document.createElement("p");
+  comparisonNote.textContent = comparison.matchedPairs
+    ? `Bounded comparison of the saved preview rows only: ${comparison.matchedPairs} matched pair(s) on the confirmed key${comparison.truncated ? `, showing the first ${comparison.emitted}` : ""}. This is a preview join of saved preview rows, not a full-data join.`
+    : "The saved preview rows produced no matched pairs on the confirmed key, so there is no comparison to show.";
+  elements["join-result"].replaceChildren(heading, note, comparisonNote);
+  if (comparison.rows.length) {
+    const table = document.createElement("div");
+    elements["join-result"].append(table);
+    renderTable(table, comparison.rows, `Bounded preview comparison joined on ${joinEvidence.sourceField} = ${joinEvidence.targetField}`);
+  }
   await refreshStorageSummary();
 });
 

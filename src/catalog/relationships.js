@@ -104,3 +104,33 @@ export function joinPreview(source, target, sourceField, targetField) {
     unmatchedTargetRows: (target.rows || []).length - matchedTargetIndexes.size,
   };
 }
+
+// Deterministic, bounded inner join of the two saved preview snapshots on the
+// confirmed key. It never runs on full data and caps the emitted rows so a
+// one-to-many match cannot expand without limit.
+export function joinComparison(source, target, sourceField, targetField, { sourceLabel = "Left", targetLabel = "Right", limit = 50 } = {}) {
+  const targetByKey = new Map();
+  (target.rows || []).forEach((row) => {
+    const key = joinKey(row[targetField]);
+    if (!key) return;
+    if (!targetByKey.has(key)) targetByKey.set(key, []);
+    targetByKey.get(key).push(row);
+  });
+  const sourceFields = (source.fields || []).map((field) => field.name);
+  const targetFields = (target.fields || []).map((field) => field.name);
+  const rows = [];
+  let matchedPairs = 0;
+  for (const sourceRow of source.rows || []) {
+    const key = joinKey(sourceRow[sourceField]);
+    if (!key) continue;
+    for (const targetRow of targetByKey.get(key) || []) {
+      matchedPairs += 1;
+      if (rows.length >= limit) continue;
+      const combined = { [`key: ${sourceField}`]: sourceRow[sourceField] };
+      sourceFields.forEach((name) => { combined[`${sourceLabel} · ${name}`] = sourceRow[name]; });
+      targetFields.forEach((name) => { combined[`${targetLabel} · ${name}`] = targetRow[name]; });
+      rows.push(combined);
+    }
+  }
+  return { rows, matchedPairs, emitted: rows.length, truncated: matchedPairs > rows.length, limit, scope: "bounded-preview" };
+}

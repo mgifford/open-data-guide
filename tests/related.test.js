@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { catalogSearchTerms, cosineSimilarity, explainRelatedDataset, relatedDatasets } from "../src/catalog/related.js";
-import { analyzeJoinCandidate, validateJoinCandidate } from "../src/catalog/relationships.js";
+import { analyzeJoinCandidate, validateJoinCandidate, joinComparison } from "../src/catalog/relationships.js";
 import { chartKindFor, chartRowsFor } from "../src/render/chart.js";
 
 describe("related dataset matching", () => {
@@ -48,6 +48,32 @@ describe("related dataset matching", () => {
     expect(evidence.expectedCardinality).toBe("needs-review");
     expect(evidence.requiresUserConfirmation).toBe(true);
     expect(evidence.reasons).toContain("1 normalized key values overlap");
+  });
+
+  it("builds a bounded deterministic comparison from confirmed preview snapshots", () => {
+    const source = { fields: [{ name: "county", type: "VARCHAR" }, { name: "wells", type: "DOUBLE" }], rows: [{ county: "Alameda", wells: 3 }, { county: "Kern", wells: 9 }] };
+    const target = { fields: [{ name: "county_name", type: "VARCHAR" }, { name: "pop", type: "DOUBLE" }], rows: [{ county_name: " Alameda ", pop: 100 }, { county_name: "Marin", pop: 50 }] };
+    const comparison = joinComparison(source, target, "county", "county_name", { sourceLabel: "Wells", targetLabel: "Census" });
+    expect(comparison.emitted).toBe(1);
+    expect(comparison.matchedPairs).toBe(1);
+    expect(comparison.truncated).toBe(false);
+    expect(comparison.rows[0]).toEqual({ "key: county": "Alameda", "Wells · county": "Alameda", "Wells · wells": 3, "Census · county_name": " Alameda ", "Census · pop": 100 });
+  });
+
+  it("caps a one-to-many comparison at the row limit and flags truncation", () => {
+    const source = { fields: [{ name: "key", type: "VARCHAR" }], rows: [{ key: "a" }] };
+    const target = { fields: [{ name: "key", type: "VARCHAR" }], rows: [{ key: "a" }, { key: "a" }, { key: "a" }] };
+    const comparison = joinComparison(source, target, "key", "key", { limit: 2 });
+    expect(comparison.matchedPairs).toBe(3);
+    expect(comparison.emitted).toBe(2);
+    expect(comparison.truncated).toBe(true);
+  });
+
+  it("skips comparison rows whose join key is missing", () => {
+    const source = { fields: [{ name: "key", type: "VARCHAR" }], rows: [{ key: "" }, { key: "a" }] };
+    const target = { fields: [{ name: "key", type: "VARCHAR" }], rows: [{ key: "a" }] };
+    const comparison = joinComparison(source, target, "key", "key");
+    expect(comparison.emitted).toBe(1);
   });
 
   it("blocks many-to-many joins even when confirmation is requested", () => {

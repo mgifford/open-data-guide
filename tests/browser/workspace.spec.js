@@ -116,6 +116,8 @@ test("records an explicit join review with unmatched preview counts and provenan
   await page.getByRole("button", { name: "Confirm bounded join review" }).click();
   await expect(page.getByText("Confirmed bounded join review")).toBeVisible();
   await expect(page.getByText(/saved.*provenance/i)).toBeVisible();
+  await expect(page.locator("#join-result")).toContainText("Bounded comparison of the saved preview rows");
+  await expect(page.getByRole("table", { name: /Bounded preview comparison joined on state = state/ })).toBeVisible();
   await expect(page.locator("#storage-summary")).toContainText("1 relationship record");
 });
 
