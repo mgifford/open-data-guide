@@ -55,6 +55,12 @@ test.describe("AI-assisted result explanation", () => {
     await expect(page.locator("#ai-summary-note")).toContainText("Browser-provided AI");
     await expect(page.locator("#story-text")).toHaveText(deterministic);
 
+    // Wait for the provenance write to commit before reloading. The status text
+    // is set only after storeSummaryProvenance resolves, so it is a reliable
+    // signal that the IndexedDB transaction has completed (Firefox can otherwise
+    // reload before the write commits, leaving the queries store empty).
+    await expect(page.locator("#query-status")).toContainText("AI explanation added");
+
     // Provenance survives reload.
     await page.reload();
     const stored = await page.evaluate(() => new Promise((resolve, reject) => {
