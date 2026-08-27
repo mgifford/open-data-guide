@@ -60,3 +60,4 @@ data or through arbitrary SQL.
 - Browser-provided AI summaries cannot be exercised against a real browser model in CI; the browser test injects a fake `LanguageModel`, and live model behavior is environment-specific.
 - The comparison operates only on the saved preview snapshots (bounded row previews), not full resources; it is review evidence, not a computed combined dataset.
 - The grounding guardrail restricts introduced numbers; it does not police non-numeric claims such as category names, which remain drawn from the provided rows.
+- The causal, advisory, trend, ratio, and significance checks are English-only and keyword-based. A claim expressed in another language, or paraphrased around the detected keywords, can pass validation; only the number-grounding check is language-independent.

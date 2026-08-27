@@ -116,6 +116,10 @@ function mentionsCategory(text, category) {
   return new RegExp(`\\b${escaped}\\b`, "i").test(text);
 }
 
+// These claim-detection patterns are English-only and keyword-based. A summary
+// that expresses a causal, advisory, trend, ratio, or significance claim in
+// another language, or paraphrases around these keywords, can pass validation.
+// The number-grounding check above is language-independent; this layer is not.
 const SUPERLATIVE_MAX = /\b(largest|highest|greatest|most|maximum|max|top|biggest)\b/i;
 const SUPERLATIVE_MIN = /\b(smallest|lowest|least|fewest|minimum|min|bottom)\b/i;
 const TREND = /\b(increas|decreas|rose|fell|grew|declin|trend|rising|falling|upward|downward|growth|over time)/i;
