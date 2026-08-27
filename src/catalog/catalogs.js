@@ -63,6 +63,7 @@ export const BUILTIN_CATALOGS = [
     subjects: ["federal", "aggregator", "multi-agency", "cross-domain"],
     inclusionReason: "Federal aggregator giving broad cross-agency coverage through a single CKAN API.",
     lastVerified: null,
+    browserAccess: "blocked",
     knownLimitations: "A 2026-08-26 browser health check confirmed the CKAN API rejects cross-origin browser requests (no CORS headers), so in-browser search and access are blocked; catalog metadata retrieval does not imply a resource is browser-accessible.",
     publisherUrl: "https://data.gov",
     apiDocsUrl: "https://docs.ckan.org/en/latest/api/",
@@ -76,6 +77,25 @@ export function listBuiltinCatalogs() {
 export function getBuiltinCatalog(id) {
   const catalog = BUILTIN_CATALOGS.find((entry) => entry.id === id);
   return catalog ? { ...catalog, source: "builtin" } : null;
+}
+
+// True when a built-in catalog is known to reject cross-origin browser requests.
+// Such catalogs are shown but not selectable, because in-browser search and
+// resource access cannot succeed from a static site (there is no server to proxy).
+export function catalogBrowserBlocked(catalog) {
+  return catalog?.browserAccess === "blocked";
+}
+
+// Origins a health check confirmed block browser CORS, for the direct-URL path.
+export function browserBlockedOrigin(url) {
+  let origin;
+  try {
+    origin = new URL(url).origin;
+  } catch {
+    return null;
+  }
+  const blocked = BUILTIN_CATALOGS.find((catalog) => catalog.browserAccess === "blocked" && new URL(catalog.baseUrl).origin === origin);
+  return blocked || null;
 }
 
 export const DEFAULT_CATALOG_ID = "cnra-ckan";

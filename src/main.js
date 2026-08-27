@@ -5,7 +5,7 @@ import {
   exportWorkspace, importWorkspace, clearWorkspace, storageEstimate,
   listCustomCatalogs, saveCustomCatalog, removeCustomCatalog,
 } from "./catalog/storage.js";
-import { listBuiltinCatalogs, getBuiltinCatalog, detectCatalog, normalizeCustomCatalog, DEFAULT_CATALOG_ID } from "./catalog/catalogs.js";
+import { listBuiltinCatalogs, getBuiltinCatalog, detectCatalog, normalizeCustomCatalog, catalogBrowserBlocked, DEFAULT_CATALOG_ID } from "./catalog/catalogs.js";
 import { catalogSearchTerms, explainRelatedDataset, relatedDatasets } from "./catalog/related.js";
 import { compareFields, historyStatus, sourceChanged } from "./catalog/history.js";
 import { compilePlan, interpretQuestion, validatePlan } from "./query/plan.js";
@@ -460,6 +460,10 @@ async function searchCatalog(start = 0) {
   if (start === 0) catalogSeenKeys = new Set();
   if (!activeCatalog) {
     setStatus("Choose a catalog to search.", "error");
+    return;
+  }
+  if (catalogBrowserBlocked(activeCatalog)) {
+    setStatus(`${activeCatalog.name} blocks cross-origin browser requests, so it cannot be searched from this static site. ${activeCatalog.knownLimitations}`, "error");
     return;
   }
   const catalogUrl = activeCatalog.baseUrl;
@@ -1300,7 +1304,9 @@ async function refreshCatalogPicker(selectId) {
     builtins.forEach((catalog) => {
       const option = document.createElement("option");
       option.value = catalog.id;
-      option.textContent = `${catalog.name} (${catalog.platform})`;
+      const blocked = catalogBrowserBlocked(catalog);
+      option.textContent = blocked ? `${catalog.name} (${catalog.platform}) — blocks browser access` : `${catalog.name} (${catalog.platform})`;
+      option.disabled = blocked;
       group.append(option);
     });
     select.append(group);
@@ -1316,7 +1322,10 @@ async function refreshCatalogPicker(selectId) {
     });
     select.append(group);
   }
-  const chosen = all.find((catalog) => catalog.id === previous) || all.find((catalog) => catalog.id === DEFAULT_CATALOG_ID) || all[0];
+  // Never land the selection on a catalog that blocks browser access.
+  const selectable = all.filter((catalog) => !catalogBrowserBlocked(catalog));
+  const requested = all.find((catalog) => catalog.id === previous);
+  const chosen = (requested && !catalogBrowserBlocked(requested) ? requested : null) || selectable.find((catalog) => catalog.id === DEFAULT_CATALOG_ID) || selectable[0] || all[0];
   if (chosen) {
     select.value = chosen.id;
     renderCatalogDetails(chosen);
@@ -1494,7 +1503,7 @@ function renderCapabilityReport(report, decision) {
     browserPlanner.addEventListener("click", runBrowserPlanner);
     container.append(browserPlanner);
   }
-  if (currentDataset && currentFields.length) {
+  if (currentDataset && currentFields.length && report.compute.webgpu) {
     const localPlanner = document.createElement("button");
     localPlanner.type = "button";
     localPlanner.className = "button-secondary";
@@ -1502,7 +1511,11 @@ function renderCapabilityReport(report, decision) {
     localPlanner.addEventListener("click", runHuggingFacePlanner);
     container.append(localPlanner);
     const localNote = document.createElement("p");
-    localNote.textContent = "Optional local AI planner: about 500 MB, downloaded only after approval and kept in the browser-managed cache. It suggests a plan; deterministic code validates and runs the query.";
+    localNote.textContent = "Optional local AI planner: about 500 MB, downloaded only after approval and kept in the browser-managed cache. It runs on WebGPU in a background worker, so it does not freeze the page. It suggests a plan; deterministic code validates and runs the query.";
+    container.append(localNote);
+  } else if (currentDataset && currentFields.length) {
+    const localNote = document.createElement("p");
+    localNote.textContent = "The optional local AI planner is not offered here because this browser does not expose WebGPU. Without it the model would run on CPU and could make the page unresponsive. Deterministic planning remains fully available.";
     container.append(localNote);
   }
   if (decision.queryPlanner === "browser-downloadable") {
@@ -1574,7 +1587,7 @@ async function runBrowserPlanner() {
 
 async function runHuggingFacePlanner() {
   if (!currentDataset || !currentFields.length) return;
-  if (!window.confirm("Download and run the optional local Hugging Face model? The browser will manage about 500 MB of model files.")) return;
+  if (!window.confirm("Download and run the optional local Hugging Face model? The browser will manage about 500 MB of model files. It runs on WebGPU in a background worker, so it will not freeze the page.")) return;
   plannerAbortController = new AbortController();
   const cancel = document.createElement("button");
   cancel.type = "button";
@@ -1587,6 +1600,7 @@ async function runHuggingFacePlanner() {
     const { createHuggingFaceProvider } = await import("./ai/providers.js");
     const provider = createHuggingFaceProvider({
       approved: true,
+      root: window,
       signal: plannerAbortController.signal,
       onProgress: (progress) => {
         if (progress.status === "progress" && progress.progress) setStatus(`Downloading the optional local model: ${Math.round(progress.progress)}%`);
@@ -1648,7 +1662,9 @@ function renderFollowups() {
 }
 
 // Describe the AI option the capability probe found, without downloading anything.
-function describeSummaryOption(decision) {
+// `webgpu` gates the local fallback: without it, a CPU-only model would freeze the
+// page, so no local option is offered.
+function describeSummaryOption(decision, webgpu) {
   if (decision.queryPlanner === "browser-ready") {
     return { kind: "browser", label: "Browser-provided AI", needsDownload: false, rows: [
       ["Provider", "Browser-provided AI (Prompt API)"],
@@ -1667,10 +1683,14 @@ function describeSummaryOption(decision) {
       ["Caching and removal", "Managed by your browser; remove it through your browser site settings"],
     ] };
   }
+  if (!webgpu) {
+    return { kind: "none", label: "No local AI available" };
+  }
   return { kind: "local", label: "Local Hugging Face model", needsDownload: true, rows: [
     ["Provider", "Local Hugging Face model"],
     ["Model", `${LOCAL_MODEL_ID} (revision ${LOCAL_MODEL_REVISION})`],
     ["Download", "About 500 MB, started only after you approve it"],
+    ["Runs on", "WebGPU, in a background worker, so it does not freeze the page"],
     ["Hosting", "Downloaded from the Hugging Face CDN and cached by your browser"],
     ["Caching and removal", "Cached by your browser; remove it through site settings or Delete local application data"],
   ] };
@@ -1686,8 +1706,13 @@ async function openAiApproval() {
   setStatus("Checking page-accessible AI. No model is downloaded during this check.", "info", elements["query-status"]);
   try {
     const { probeBrowserCapabilities, capabilityDecision } = await import("./ai/browser-capabilities.js");
-    const decision = capabilityDecision(await probeBrowserCapabilities(window));
-    const option = describeSummaryOption(decision);
+    const report = await probeBrowserCapabilities(window);
+    const decision = capabilityDecision(report);
+    const option = describeSummaryOption(decision, report.compute.webgpu);
+    if (option.kind === "none") {
+      setStatus("No page-accessible browser AI was found, and the local model is not offered because this browser does not expose WebGPU (it would run on CPU and could make the page unresponsive). The deterministic summary above remains the authoritative result.", "info", elements["query-status"]);
+      return;
+    }
     pendingSummaryOption = option;
     metadataList(elements["ai-approval-details"], option.rows);
     elements["ai-approve-button"].textContent = option.needsDownload ? "Approve download and generate" : "Approve and generate";
@@ -1713,7 +1738,7 @@ async function generateAiSummary() {
   try {
     const { createChromePromptProvider, createHuggingFaceProvider } = await import("./ai/providers.js");
     if (option.kind === "local") {
-      provider = createHuggingFaceProvider({ approved: true, signal: aiSummaryController.signal, onProgress: (event) => { if (event?.status === "progress" && event.progress) progress.textContent = `Downloading the local model: ${Math.round(event.progress)}%`; } });
+      provider = createHuggingFaceProvider({ approved: true, root: window, signal: aiSummaryController.signal, onProgress: (event) => { if (event?.status === "progress" && event.progress) progress.textContent = `Downloading the local model: ${Math.round(event.progress)}%`; } });
     } else {
       provider = createChromePromptProvider(window, { signal: aiSummaryController.signal });
       if (option.needsDownload) await provider.prepare((event) => { progress.textContent = `Browser-managed model download: ${Math.round(Number(event) * 100)}%`; });

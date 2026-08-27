@@ -8,6 +8,15 @@ export const LOCAL_MODEL = {
   approximateDownload: "about 500 MB, browser-managed cache",
 };
 
+// Pinned so the worker imports exactly the version the app was tested against.
+export const TRANSFORMERS_CDN_URL = "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1";
+
+// The local model runs on WebGPU only. On a CPU-only WASM backend a 0.5B model is
+// slow enough to read as a hang, so callers should not offer it without WebGPU.
+export function localModelSupported(root = globalThis) {
+  return Boolean(root.navigator?.gpu);
+}
+
 export const ANALYSIS_PLAN_SCHEMA = {
   type: "object",
   additionalProperties: false,
@@ -164,8 +173,55 @@ export function providerDecision(report) {
   return decision.queryPlanner === "browser-ready" ? "browser-prompt-ready" : decision.queryPlanner === "browser-downloadable" ? "browser-prompt-downloadable" : "deterministic-only";
 }
 
+// Spawn the worker that runs transformers.js off the main thread. Injectable so
+// tests can supply a fake worker without loading the real module worker.
+function defaultWorkerFactory() {
+  return new Worker(new URL("./huggingface.worker.js", import.meta.url), { type: "module" });
+}
+
 export function createHuggingFaceProvider(options = {}) {
-  let generator = null;
+  const createWorker = options.createWorker || defaultWorkerFactory;
+  // Prefer WebGPU; the worker still runs off the main thread if the browser
+  // silently falls back, but callers should gate the offer on localModelSupported.
+  const device = options.device || (options.root && !options.root.navigator?.gpu ? "wasm" : "webgpu");
+  let worker = null;
+  let nextId = 0;
+
+  function ensureWorker() {
+    if (!worker) worker = createWorker();
+    return worker;
+  }
+
+  // Send one generation request and resolve with the generated text. Progress
+  // events flow to options.onProgress; an aborted signal rejects the pending
+  // promise (the worker keeps running so a later request can reuse the model).
+  function generate(prompt, generationOptions) {
+    return new Promise((resolve, reject) => {
+      const id = nextId++;
+      const activeWorker = ensureWorker();
+      const onMessage = (message) => {
+        const data = message.data || {};
+        if (data.id !== id) return;
+        if (data.type === "progress") { options.onProgress?.(data.event); return; }
+        cleanup();
+        if (data.type === "result") resolve(data.text);
+        else if (data.type === "error") { const error = new Error(data.message); error.name = data.name || "Error"; reject(error); }
+      };
+      const onError = (event) => { cleanup(); reject(new Error(event.message || "The local model worker failed.")); };
+      const onAbort = () => { cleanup(); reject(new DOMException("The local model request was cancelled.", "AbortError")); };
+      function cleanup() {
+        activeWorker.removeEventListener("message", onMessage);
+        activeWorker.removeEventListener("error", onError);
+        options.signal?.removeEventListener("abort", onAbort);
+      }
+      if (options.signal?.aborted) { onAbort(); return; }
+      activeWorker.addEventListener("message", onMessage);
+      activeWorker.addEventListener("error", onError);
+      options.signal?.addEventListener("abort", onAbort, { once: true });
+      activeWorker.postMessage({ id, type: "generate", cdnUrl: TRANSFORMERS_CDN_URL, modelId: LOCAL_MODEL.id, revision: LOCAL_MODEL.revision, device, dtype: "q4", prompt, options: generationOptions });
+    });
+  }
+
   return {
     id: "huggingface-local",
     label: "Local Hugging Face model",
@@ -173,20 +229,11 @@ export function createHuggingFaceProvider(options = {}) {
     modelVersion: LOCAL_MODEL.revision,
     downloadDisclosure: LOCAL_MODEL.approximateDownload,
     async availability() {
-      return { status: generator ? "available" : "downloadable", ready: Boolean(generator), downloadable: !generator };
+      return { status: "downloadable", ready: false, downloadable: true };
     },
     async plan(input) {
       if (options.approved !== true) throw new Error("Local model use requires explicit approval.");
-      if (!generator) {
-        const { pipeline } = await import(/* @vite-ignore */ "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1");
-        generator = await pipeline("text-generation", LOCAL_MODEL.id, {
-          revision: LOCAL_MODEL.revision,
-          dtype: "q4",
-          progress_callback: options.onProgress,
-        });
-      }
-      const output = await generator(promptFor(input), { max_new_tokens: 500, temperature: 0, do_sample: false, return_full_text: false, signal: options.signal });
-      const text = Array.isArray(output) ? output[0]?.generated_text || "" : String(output || "");
+      const text = await generate(promptFor(input), { max_new_tokens: 500, temperature: 0, do_sample: false, return_full_text: false });
       const json = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
       const plan = JSON.parse(json);
       validateProviderPlan(plan, input.fields);
@@ -194,18 +241,11 @@ export function createHuggingFaceProvider(options = {}) {
     },
     async summarize({ packet }) {
       if (options.approved !== true) throw new Error("Local model use requires explicit approval.");
-      if (!generator) {
-        const { pipeline } = await import(/* @vite-ignore */ "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1");
-        generator = await pipeline("text-generation", LOCAL_MODEL.id, { revision: LOCAL_MODEL.revision, dtype: "q4", progress_callback: options.onProgress });
-      }
-      const generate = async (prompt) => {
-        const output = await generator(prompt, { max_new_tokens: 220, temperature: 0, do_sample: false, return_full_text: false, signal: options.signal });
-        return Array.isArray(output) ? output[0]?.generated_text || "" : String(output || "");
-      };
-      return summarizeResult({ packet, generate });
+      return summarizeResult({ packet, generate: (prompt) => generate(prompt, { max_new_tokens: 220, temperature: 0, do_sample: false, return_full_text: false }) });
     },
     async close() {
-      generator = null;
+      worker?.terminate();
+      worker = null;
     },
   };
 }

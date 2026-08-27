@@ -6,6 +6,8 @@ import {
   detectCatalog,
   normalizeCustomCatalog,
   isSafeCatalogUrl,
+  catalogBrowserBlocked,
+  browserBlockedOrigin,
 } from "../src/catalog/catalogs.js";
 
 function jsonResponse(body, ok = true) {
@@ -37,6 +39,18 @@ describe("built-in catalog registry", () => {
     }
     // Data.gov's CKAN API rejects cross-origin browser requests, so it must stay unverified.
     expect(getBuiltinCatalog("data-gov-ckan").lastVerified).toBeNull();
+  });
+
+  it("marks the CORS-blocked catalog so the UI can refuse it, but not the accessible ones", () => {
+    expect(catalogBrowserBlocked(getBuiltinCatalog("data-gov-ckan"))).toBe(true);
+    expect(catalogBrowserBlocked(getBuiltinCatalog("cnra-ckan"))).toBe(false);
+    expect(catalogBrowserBlocked(undefined)).toBe(false);
+  });
+
+  it("recognizes a blocked catalog origin from a direct dataset URL", () => {
+    expect(browserBlockedOrigin("https://catalog.data.gov/dataset/medicaid-spending-by-drug")?.id).toBe("data-gov-ckan");
+    expect(browserBlockedOrigin("https://data.cnra.ca.gov/dataset/anything")).toBeNull();
+    expect(browserBlockedOrigin("not a url")).toBeNull();
   });
 });
 

@@ -1,3 +1,5 @@
+import { browserBlockedOrigin } from "../catalog/catalogs.js";
+
 const SUPPORTED_FORMATS = new Set(["csv", "json", "parquet"]);
 const SAFE_PROTOCOLS = new Set(["http:", "https:"]);
 
@@ -171,6 +173,13 @@ export async function resolveDataset(input) {
   const match = url.pathname.match(/\/dataset\/([^/?#]+)/i);
   if (!match) {
     throw new Error("Use a direct CSV, JSON, or Parquet URL, or a dataset page from a public data catalog.");
+  }
+
+  // Known-CORS-blocked catalogs cannot be resolved from a static site. Explain
+  // the specific reason instead of letting the fetch attempts fail generically.
+  const blocked = browserBlockedOrigin(url.href);
+  if (blocked) {
+    throw new Error(`${blocked.name} blocks cross-origin browser requests, so this dataset page cannot be opened from this browser. ${blocked.knownLimitations} Open a direct download URL for a specific resource instead.`);
   }
 
   const id = decodeURIComponent(match[1]);
