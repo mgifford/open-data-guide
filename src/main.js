@@ -13,7 +13,7 @@ import { renderTable } from "./render/table.js";
 import { renderSchematic } from "./render/schematic.js";
 import { describeResult } from "./render/advisor.js";
 import { downloadText, resultsToCsv, resultsToJson } from "./render/export.js";
-import { shouldRefuseResource } from "./data/ingestion.js";
+import { shouldRefuseResource, describeFieldObservations } from "./data/ingestion.js";
 import { datastoreResource, runDataStorePlan } from "./data/datastore.js";
 import { createActivityLog } from "./ui/activity.js";
 import { createJourney } from "./ui/journey.js";
@@ -684,11 +684,20 @@ function renderProfile(profile) {
     item.append(strong, document.createTextNode(label));
     elements["profile-summary"].append(item);
   });
-  renderTable(elements["fields-table"], currentFields.map((field) => ({
-    field: field.name,
-    inferred_type: field.type,
-    documented_definition: field.description || "Not supplied",
-  })), "Fields found in this resource");
+  // Preview values per field feed deterministic "observed characteristics".
+  // These are the app's own read of the data, never a publisher definition.
+  const previewRows = Array.isArray(profile.preview) ? profile.preview : [];
+  const profileRowCount = profile.quality?.remote ? profile.quality.previewRowCount ?? previewRows.length : profile.quality?.rowCount ?? previewRows.length;
+  renderTable(elements["fields-table"], currentFields.map((field) => {
+    const samples = previewRows.map((row) => row?.[field.name]);
+    const observations = describeFieldObservations(field, samples, field.nullCount != null && Number.isFinite(profileRowCount) ? profileRowCount : previewRows.length);
+    return {
+      field: field.name,
+      inferred_type: field.type,
+      documented_definition: field.description || "Not supplied",
+      observed_characteristics: observations.length ? observations.join(" ") : "No distinctive pattern observed",
+    };
+  }), "Fields found in this resource");
   renderTable(elements["preview-table"], profile.preview, "First 20 rows");
   elements["quality-summary"].replaceChildren();
   const qualityHeading = document.createElement("h3");

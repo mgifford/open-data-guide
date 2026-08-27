@@ -32,6 +32,7 @@ npm run preview
 - Dataset markers stored in IndexedDB.
 - Local CSV, JSON, and Parquet querying with DuckDB-Wasm.
 - Deterministic delimiter parsing, textual-null detection, field profiling, date display, and large-resource refusal.
+- Deterministic "observed characteristics" per field (units such as feet, categorical vs free-form, numeric and date ranges, approximate `>`/`<` markers) shown separately from the publisher's documented definition, never presented as one.
 - Postal, ZIP+4, ZCTA, FIPS, latitude, and longitude role detection with leading-zero preservation and country-aware validation.
 - Current-catalog search with bounded pagination and explainable subject, geography, temporal, publisher, and field evidence.
 - Playwright Chromium acceptance coverage for the sample, CNRA fixtures, and postal/FIPS preservation.
