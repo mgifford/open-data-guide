@@ -124,6 +124,96 @@ export function formatDisplayValue(value, fieldName = "") {
   return String(value);
 }
 
+// Roles that carry a plain-language meaning worth stating as an observation.
+const ROLE_OBSERVATIONS = {
+  "postal-code": "Values look like postal codes; kept as text to preserve leading zeros.",
+  "zip-code": "Values look like ZIP codes; kept as text to preserve leading zeros.",
+  "zip-plus-four": "Values look like ZIP+4 codes; kept as text to preserve leading zeros.",
+  zcta: "Values look like Census ZCTAs, not USPS ZIP codes or addresses.",
+  fips: "Values look like FIPS geographic codes; kept as text to preserve leading zeros.",
+  latitude: "Values look like latitude coordinates.",
+  longitude: "Values look like longitude coordinates.",
+};
+
+// A trailing unit token shared by most sample values (e.g. 45' or 12 ft) is a
+// strong observed hint about what the numbers mean, without asserting it as fact.
+const UNIT_PATTERNS = [
+  [/^\s*['′]\s*$/, "feet (a trailing ' mark)"],
+  [/^\s*(ft|feet)\s*$/i, "feet"],
+  [/^\s*["″]\s*$/, "inches (a trailing \" mark)"],
+  [/^\s*(in|inch|inches)\s*$/i, "inches"],
+  [/^\s*%\s*$/, "percent"],
+  [/^\s*(mi|miles?)\s*$/i, "miles"],
+  [/^\s*(km|kilometers?)\s*$/i, "kilometers"],
+  [/^\s*(m|meters?)\s*$/i, "meters"],
+  [/^\s*(cm|centimeters?)\s*$/i, "centimeters"],
+  [/^\s*(kg|kilograms?)\s*$/i, "kilograms"],
+  [/^\s*(lbs?|pounds?)\s*$/i, "pounds"],
+];
+
+function detectTrailingUnit(sampleStrings) {
+  const units = new Map();
+  let measured = 0;
+  for (const raw of sampleStrings) {
+    // Split a leading number from any trailing non-numeric remainder.
+    const match = /^[<>~=]*\s*[-+]?[\d,]*\.?\d+\s*(.*)$/.exec(String(raw).trim());
+    if (!match) continue;
+    measured += 1;
+    const suffix = match[1];
+    const unit = UNIT_PATTERNS.find(([pattern]) => pattern.test(suffix))?.[1];
+    if (unit) units.set(unit, (units.get(unit) || 0) + 1);
+  }
+  if (!measured) return null;
+  const [best] = [...units.entries()].sort((a, b) => b[1] - a[1]);
+  // Report only when the unit dominates the measured values, not a lone outlier.
+  return best && best[1] / measured >= 0.6 ? best[0] : null;
+}
+
+// Build short, plainly-inferred observations about a field from its profile and
+// preview sample values. These are the app's own read of the data and must never
+// be presented as the publisher's documented definition.
+export function describeFieldObservations(field, sampleValues = [], rowCount = 0) {
+  if (!field) return [];
+  const notes = [];
+  const samples = sampleValues.map((value) => (value === null || value === undefined ? "" : String(value))).filter((value) => value.trim() !== "");
+  const nonNull = rowCount && Number.isFinite(field.nullCount) ? rowCount - field.nullCount : samples.length;
+
+  if (ROLE_OBSERVATIONS[field.semanticRole]) notes.push(ROLE_OBSERVATIONS[field.semanticRole]);
+
+  if (field.inferredType === "date") {
+    notes.push("Values parse as dates.");
+    if (Array.isArray(field.dateRange) && field.dateRange.length === 2) notes.push(`Observed range ${field.dateRange[0].slice(0, 10)} to ${field.dateRange[1].slice(0, 10)}.`);
+  } else if (field.inferredType === "number") {
+    const unit = detectTrailingUnit(samples);
+    if (unit) notes.push(`Numbers appear to be measured in ${unit}.`);
+    if (field.minimum !== "" && field.maximum !== "" && field.minimum !== undefined) notes.push(`Observed range ${field.minimum} to ${field.maximum}.`);
+    else notes.push("Values are numeric.");
+  } else {
+    // Text: distinguish a small controlled vocabulary from free-form entry.
+    const distinct = Number(field.distinctCount);
+    if (field.likelyIdentifier || (distinct && nonNull && distinct === nonNull && nonNull > 1)) {
+      notes.push("Every value is distinct, so this looks like an identifier rather than a category.");
+    } else if (distinct && distinct <= 12 && (!nonNull || distinct < nonNull)) {
+      const shown = [...new Set(samples)].slice(0, 3).join(", ");
+      notes.push(`Appears categorical: ${distinct} distinct value(s)${shown ? ` such as ${shown}` : ""}.`);
+    } else if (distinct) {
+      notes.push(`${distinct} distinct value(s); likely free-form text.`);
+    }
+    const unit = detectTrailingUnit(samples);
+    if (unit) notes.push(`Some values carry a ${unit} unit, so the column mixes numbers and text.`);
+  }
+
+  if (samples.some((value) => /^[<>~]|[<>~]\s*\d/.test(value.trim()))) {
+    notes.push("Some values include comparison markers (for example >45'), so they are approximate rather than exact.");
+  }
+
+  if (rowCount && field.nullCount) {
+    notes.push(`${field.nullCount} of ${rowCount} row(s) are missing or a recognized null sentinel.`);
+  }
+
+  return notes;
+}
+
 export function shouldRefuseResource(bytes, limit = MAX_BROWSER_RESOURCE_BYTES) {
   return Number.isFinite(Number(bytes)) && Number(bytes) > limit;
 }

@@ -39,6 +39,7 @@ WebGPU and WebNN indicate local compute capacity. They do not indicate that a mo
 
 - Catalog metadata and data dictionaries remain publisher claims.
 - Field types inferred by DuckDB are labelled as inferred.
+- Observed field characteristics (units, categorical vs free-form, ranges, approximate markers) are computed deterministically from the profile and preview values and shown in a separate `observed_characteristics` column. They are the app's own read of the data and never fill `documented_definition`, which stays "Not supplied" unless the publisher supplied one.
 - A generated plan must reference only fields in the loaded schema.
 - Query generation uses an allow-list of aggregations and quotes identifiers.
 - Results show the generated SQL and source URL.
