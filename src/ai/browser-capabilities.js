@@ -126,6 +126,20 @@ export async function probeWebGpu(root = globalThis, timeoutMs = 3000) {
   }
 }
 
+// A plain-language caution when a large model download would run over a
+// metered, cellular, or slow connection, or with Data Saver on — so a ~500 MB
+// download does not silently burn mobile data. Returns "" when the connection
+// looks unmetered or the Network Information API is unavailable (Safari,
+// Firefox), in which case no false warning is shown.
+export function connectionWarning(root = globalThis) {
+  const connection = root.navigator?.connection;
+  if (!connection) return "";
+  if (connection.saveData) return "Data Saver is turned on in your browser, which usually means you are trying to limit data use. This model download is large.";
+  if (connection.type === "cellular") return "You appear to be on a cellular connection. Downloading the model may use mobile data and could incur charges.";
+  if (/^(slow-2g|2g|3g)$/.test(connection.effectiveType || "")) return "Your connection looks slow, so downloading the model may take a long time.";
+  return "";
+}
+
 export async function probeBrowserCapabilities(root = globalThis, timeoutMs = 3000) {
   const apis = [];
   for (const spec of API_SPECS) {

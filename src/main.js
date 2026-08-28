@@ -1630,13 +1630,14 @@ async function runBrowserPlanner() {
 
 async function runHuggingFacePlanner() {
   if (!currentDataset || !currentFields.length) return;
-  const { probeWebGpu } = await import("./ai/browser-capabilities.js");
+  const { probeWebGpu, connectionWarning } = await import("./ai/browser-capabilities.js");
   const gpu = await probeWebGpu(window);
   if (!gpu.usable) {
     setStatus(`The local model cannot run here. ${gpu.reason} Deterministic planning remains available.`, "error");
     return;
   }
-  if (!window.confirm(`Download and run the optional local model? The browser will manage ${describeModelDownload(LOCAL_MODEL_ID)} of model files and load them into your graphics (WebGPU) memory.\n\nWarning: on computers with limited memory (roughly 8 GB or less), this can make the whole computer unresponsive and may force a restart. The page itself stays responsive because the model runs off the main thread, but that does not protect the rest of your system.\n\nDeterministic planning works without it.`)) return;
+  const netCaution = connectionWarning(window);
+  if (!window.confirm(`Download and run the optional local model? The browser will manage ${describeModelDownload(LOCAL_MODEL_ID)} of model files and load them into your graphics (WebGPU) memory.\n\nWarning: on computers with limited memory (roughly 8 GB or less), this can make the whole computer unresponsive and may force a restart. The page itself stays responsive because the model runs off the main thread, but that does not protect the rest of your system.${netCaution ? `\n\n${netCaution}` : ""}\n\nDeterministic planning works without it.`)) return;
   plannerAbortController = new AbortController();
   const cancel = document.createElement("button");
   cancel.type = "button";
@@ -1761,7 +1762,7 @@ async function openAiApproval() {
   resetAiSummary();
   setStatus("Checking page-accessible AI. No model is downloaded during this check.", "info", elements["query-status"]);
   try {
-    const { probeBrowserCapabilities, capabilityDecision } = await import("./ai/browser-capabilities.js");
+    const { probeBrowserCapabilities, capabilityDecision, connectionWarning } = await import("./ai/browser-capabilities.js");
     const report = await probeBrowserCapabilities(window);
     const decision = capabilityDecision(report);
     const option = describeSummaryOption(decision, report.compute);
@@ -1771,8 +1772,11 @@ async function openAiApproval() {
     }
     pendingSummaryOption = option;
     metadataList(elements["ai-approval-details"], option.rows);
-    elements["ai-approval-warning"].textContent = option.warning || "";
-    elements["ai-approval-warning"].hidden = !option.warning;
+    // Combine the memory warning with a connection caution when a download over
+    // a cellular/metered link would otherwise burn mobile data silently.
+    const combinedWarning = [option.warning, option.needsDownload ? connectionWarning(window) : ""].filter(Boolean).join(" ");
+    elements["ai-approval-warning"].textContent = combinedWarning;
+    elements["ai-approval-warning"].hidden = !combinedWarning;
     elements["ai-approve-button"].textContent = option.needsDownload ? "Approve download and generate" : "Approve and generate";
     elements["ai-approval-progress"].textContent = "";
     elements["ai-approval-retry"].hidden = true;

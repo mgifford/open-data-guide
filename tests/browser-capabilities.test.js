@@ -1,5 +1,24 @@
 import { describe, expect, it, vi } from "vitest";
-import { capabilityDecision, normalizeAvailability, probeBrowserCapabilities, probeWebGpu } from "../src/ai/browser-capabilities.js";
+import { capabilityDecision, connectionWarning, normalizeAvailability, probeBrowserCapabilities, probeWebGpu } from "../src/ai/browser-capabilities.js";
+
+describe("connection warning before a large download", () => {
+  it("warns on a cellular connection", () => {
+    expect(connectionWarning({ navigator: { connection: { type: "cellular" } } })).toMatch(/cellular/i);
+  });
+
+  it("warns when Data Saver is enabled", () => {
+    expect(connectionWarning({ navigator: { connection: { saveData: true } } })).toMatch(/Data Saver/i);
+  });
+
+  it("warns on a slow effective connection", () => {
+    expect(connectionWarning({ navigator: { connection: { effectiveType: "2g" } } })).toMatch(/slow/i);
+  });
+
+  it("stays silent on unmetered connections or when the API is absent", () => {
+    expect(connectionWarning({ navigator: { connection: { type: "wifi", effectiveType: "4g" } } })).toBe("");
+    expect(connectionWarning({ navigator: {} })).toBe("");
+  });
+});
 
 describe("WebGPU guardrail for the local model", () => {
   it("refuses when the WebGPU API is not exposed", async () => {
