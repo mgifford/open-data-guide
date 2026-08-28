@@ -19,6 +19,7 @@ import { renderPointMap } from "./render/geo-map.js";
 import { datastoreResource, runDataStorePlan } from "./data/datastore.js";
 import { createActivityLog } from "./ui/activity.js";
 import { createJourney } from "./ui/journey.js";
+import { createMilestoneAnnouncer } from "./ui/announce.js";
 import { classifyLoadError, classifyResourceError } from "./ui/errors.js";
 import { buildFactPacket } from "./ai/summary.js";
 
@@ -572,6 +573,14 @@ async function restoreHistoryRecord(record) {
 }
 
 function sourceLink(dataset) {
+  // Local files and saved analyses can have no source URL. An anchor with an
+  // empty href and empty text is an unnamed link (WCAG link-name), so fall back
+  // to plain text describing the origin instead.
+  if (!dataset.sourceUrl) {
+    const span = document.createElement("span");
+    span.textContent = dataset.connectorId === "local" ? "Loaded from this computer (no public URL)" : "No source URL";
+    return span;
+  }
   const link = document.createElement("a");
   link.href = dataset.sourceUrl;
   link.textContent = dataset.sourceUrl;
@@ -1284,9 +1293,11 @@ async function runAppProvidedSemanticMatching() {
   setStatus("Downloading or opening the local MiniLM embedding model...");
   try {
     const { semanticRelated } = await import("./ai/embeddings.js");
+    const announceDownload = createMilestoneAnnouncer();
     const results = await semanticRelated(currentDataset, candidates, (progress) => {
       if (progress.status === "progress" && progress.progress) {
-        setStatus(`Downloading the local model: ${Math.round(progress.progress)}%`);
+        const milestone = announceDownload(progress.progress);
+        if (milestone !== null) setStatus(`Downloading the local model: ${milestone}%`);
       }
     });
     renderRelated(results, true);
@@ -1582,7 +1593,11 @@ async function runBrowserModelPreparation() {
   try {
     const { createChromePromptProvider } = await import("./ai/providers.js");
     const provider = createChromePromptProvider(window, { signal: controller.signal });
-    await provider.prepare((progress) => setStatus(`Browser-managed model download: ${Math.round(Number(progress) * 100)}%`));
+    const announceDownload = createMilestoneAnnouncer();
+    await provider.prepare((progress) => {
+      const milestone = announceDownload(Number(progress) * 100);
+      if (milestone !== null) setStatus(`Browser-managed model download: ${milestone}%`);
+    });
     setStatus("Browser-managed model is ready. Ask it for a constrained plan when you are ready.");
   } catch (error) {
     setStatus(`Browser-managed model preparation failed: ${error.message}. The deterministic planner remains available.`, "error");
@@ -1648,13 +1663,17 @@ async function runHuggingFacePlanner() {
   setStatus("Downloading and preparing the optional local AI planner after your approval. Source data stays in this browser...");
   try {
     const { createHuggingFaceProvider } = await import("./ai/providers.js");
+    const announceDownload = createMilestoneAnnouncer();
     const provider = createHuggingFaceProvider({
       approved: true,
       root: window,
       signal: plannerAbortController.signal,
       onProgress: (progress) => {
         const percent = progress.aggregateProgress ?? progress.progress;
-        if (progress.status === "progress" && percent) setStatus(`Downloading the optional local model: ${Math.round(percent)}%`);
+        if (progress.status === "progress" && percent) {
+          const milestone = announceDownload(percent);
+          if (milestone !== null) setStatus(`Downloading the optional local model: ${milestone}%`);
+        }
       },
       onNotice: (notice) => setStatus(notice.message, "info"),
     });
@@ -1799,11 +1818,12 @@ async function generateAiSummary() {
   let provider = null;
   try {
     const { createChromePromptProvider, createHuggingFaceProvider } = await import("./ai/providers.js");
+    const announceDownload = createMilestoneAnnouncer();
     if (option.kind === "local") {
-      provider = createHuggingFaceProvider({ approved: true, root: window, signal: aiSummaryController.signal, onProgress: (event) => { const percent = event?.aggregateProgress ?? event?.progress; if (event?.status === "progress" && percent) progress.textContent = `Downloading the local model: ${Math.round(percent)}%`; }, onNotice: (notice) => { progress.textContent = notice.message; } });
+      provider = createHuggingFaceProvider({ approved: true, root: window, signal: aiSummaryController.signal, onProgress: (event) => { const percent = event?.aggregateProgress ?? event?.progress; if (event?.status === "progress" && percent) { const milestone = announceDownload(percent); if (milestone !== null) progress.textContent = `Downloading the local model: ${milestone}%`; } }, onNotice: (notice) => { progress.textContent = notice.message; } });
     } else {
       provider = createChromePromptProvider(window, { signal: aiSummaryController.signal });
-      if (option.needsDownload) await provider.prepare((event) => { progress.textContent = `Browser-managed model download: ${Math.round(Number(event) * 100)}%`; });
+      if (option.needsDownload) await provider.prepare((event) => { const milestone = announceDownload(Number(event) * 100); if (milestone !== null) progress.textContent = `Browser-managed model download: ${milestone}%`; });
     }
     const packet = buildFactPacket(currentResult.plan, currentResult);
     const summary = await provider.summarize({ packet });

@@ -105,6 +105,11 @@ export async function renderChart(container, rows, plan, fields = []) {
     container.appendChild(warningsEl);
   }
 
-  await embed(chartHost, spec, { actions: true, renderer: "svg" });
+  // actions:false removes Vega's built-in "⋯" export menu. Left on, it injects
+  // interactive controls (an unnamed <summary>, empty-href links) inside this
+  // role="img" host, which fails WCAG (nested-interactive, link-name,
+  // summary-name). The result table and the CSV/JSON/spec downloads below the
+  // chart provide accessible access to the same data and the chart spec.
+  await embed(chartHost, spec, { actions: false, renderer: "svg" });
   return spec;
 }

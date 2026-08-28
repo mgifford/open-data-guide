@@ -118,6 +118,10 @@ export async function renderPointMap(container, { latField, lonField, rows = [] 
     config: { view: { stroke: "#d0d0d0" } },
   };
 
-  await embed(mapHost, spec, { actions: true, renderer: "svg" });
+  // actions:false removes Vega's built-in "⋯" export menu. Left on, it injects
+  // interactive controls (an unnamed <summary>, empty-href links) inside this
+  // role="img" host, which fails WCAG (nested-interactive, link-name,
+  // summary-name). The point plot is a preview; the preview table holds the data.
+  await embed(mapHost, spec, { actions: false, renderer: "svg" });
   return geography;
 }
