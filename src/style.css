@@ -89,6 +89,8 @@ pre { white-space: pre-wrap; word-break: break-word; background: var(--backgroun
 .chart { min-height: 8rem; max-width: 100%; margin-block: 1rem; }
 .chart-host { max-width: 100%; overflow-x: auto; }
 .chart-host svg { max-width: 100%; height: auto; }
+.geo-map:not(:empty) { margin-block: 1rem; padding: 1rem; border: 1px solid var(--border); border-radius: .5rem; background: var(--surface); }
+.geo-map h3 { margin-top: 0; }
 .story { border-left: .3rem solid var(--accent); padding: .8rem 1rem; background: var(--accent-soft); margin-block: 1rem; }
 .story h4 { margin: 0; }
 .story p { margin-bottom: 0; }
