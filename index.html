@@ -24,7 +24,7 @@
 
     <main id="main" class="layout">
       <section id="discover" class="panel panel-accent journey-section" data-journey-step="1" aria-labelledby="start-heading">
-        <p class="step-eyebrow">Step 1 of 6</p>
+        <p class="step-eyebrow">Step 1 of 6 · Choose data</p>
         <h2 id="start-heading">Choose data</h2>
         <p>Open a starter dataset below, paste a direct CSV, JSON, or Parquet URL or a catalog dataset page, or load a CSV file from your own computer.</p>
         <form id="dataset-form">
@@ -41,6 +41,7 @@
           <p class="field-hint">The file is read and processed in this browser. It is not uploaded to any server.</p>
         </div>
         <p class="sample-line"><button class="button-secondary" id="sample-button" type="button">Try the included sample</button> <span class="field-hint">A small synthetic file kept only as a developer and test fixture, not real data.</span></p>
+        <p class="jump-hint">Don't have a dataset yet? Jump to <a href="#catalog-section">Search open data catalogs</a> to find one, or open a <a href="#starters-heading">Starter dataset</a> below.</p>
         <details class="access-limits">
           <summary>What can and cannot be opened in the browser</summary>
           <ul>
@@ -54,7 +55,7 @@
         <div id="status" class="status" role="status" aria-live="polite"></div>
       </section>
 
-      <section class="panel journey-section" data-journey-step="1" aria-labelledby="catalog-heading">
+      <section id="catalog-section" class="panel journey-section" data-journey-step="1" aria-labelledby="catalog-heading">
         <h2 id="catalog-heading">Search open data catalogs</h2>
         <p>Searches are sent directly from your browser to the catalog you select. There is no Open Data Guide server in between. Whether a search succeeds depends on the catalog allowing cross-origin browser requests. A dataset appearing here does not guarantee its files can be opened directly in the browser.</p>
         <form id="catalog-form">
@@ -120,7 +121,7 @@
       <section id="dataset-section" class="panel journey-section" data-journey-step="2" aria-labelledby="dataset-heading" hidden>
         <div class="section-heading">
           <div>
-            <p class="step-eyebrow">Step 2 of 6</p>
+            <p class="step-eyebrow">Step 2 of 6 · Understand the dataset</p>
             <p id="platform-label" class="eyebrow"></p>
             <h2 id="dataset-heading"></h2>
           </div>
@@ -153,7 +154,7 @@
       </section>
 
       <section id="question-section" class="panel journey-section" data-journey-step="3" aria-labelledby="question-heading" hidden>
-        <p class="step-eyebrow">Steps 3–5 of 6</p>
+        <p class="step-eyebrow">Steps 3–5 of 6 · Choose a question, analyze the data, review and refine</p>
         <h2 id="question-heading">Ask a reproducible question</h2>
         <p>This draft understands constrained questions such as <q>count by state</q> or <q>average amount by category</q>. Review the interpretation before running it.</p>
         <form id="question-form">
@@ -212,6 +213,7 @@
             <button id="ai-summary-button" class="button-secondary" type="button" hidden>Explain this result with AI</button>
             <div id="ai-approval" class="ai-approval" role="group" aria-labelledby="ai-approval-heading" hidden>
               <h5 id="ai-approval-heading">Approve an AI model</h5>
+              <p id="ai-approval-warning" class="notice" role="alert" hidden></p>
               <dl id="ai-approval-details" class="metadata"></dl>
               <p id="ai-approval-progress" class="status" role="status" aria-live="polite"></p>
               <div class="operation-actions">
@@ -251,7 +253,7 @@
       </section>
 
       <section id="join-section" class="panel journey-section" data-journey-step="6" aria-labelledby="join-heading" hidden>
-        <p class="step-eyebrow">Step 6 of 6</p>
+        <p class="step-eyebrow">Step 6 of 6 · Connect related data</p>
         <h2 id="join-heading">Review a possible dataset join</h2>
         <p>This review uses up to 100 preview rows saved with each dataset marker. It does not approve a full-data join.</p>
         <form id="join-form">

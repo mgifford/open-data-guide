@@ -35,11 +35,10 @@ export function createJourney(container, { steps = JOURNEY_STEPS } = {}) {
       else if (position === current) item.dataset.state = "current";
       else item.dataset.state = reachable ? "available" : "upcoming";
 
-      const marker = document.createElement("span");
-      marker.className = "journey-step-number";
-      marker.textContent = String(position);
-      marker.setAttribute("aria-hidden", "true");
-
+      // The step number is drawn by a CSS counter on `.journey-step` (see the
+      // `.journey-step-link::before` badge in style.css). Emitting it here as
+      // text too would double the number in the ordered-list semantics and in
+      // any "copy as text" export, so the DOM carries the label only.
       const text = document.createElement("span");
       text.className = "journey-step-label";
       text.textContent = step.label;
@@ -53,7 +52,7 @@ export function createJourney(container, { steps = JOURNEY_STEPS } = {}) {
         const status = document.createElement("span");
         status.className = "visually-hidden";
         status.textContent = ` (${state})`;
-        link.append(marker, text, status);
+        link.append(text, status);
         item.append(link);
       } else {
         const label = document.createElement("span");
@@ -62,7 +61,7 @@ export function createJourney(container, { steps = JOURNEY_STEPS } = {}) {
         const status = document.createElement("span");
         status.className = "visually-hidden";
         status.textContent = " (Not available yet: finish the earlier steps to unlock this step)";
-        label.append(marker, text, status);
+        label.append(text, status);
         item.append(label);
       }
       list.append(item);

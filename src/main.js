@@ -38,7 +38,7 @@ const elements = Object.fromEntries([
   "history-search-form", "history-query", "history-list", "export-button",
   "import-input", "clear-data-button", "storage-summary", "story-text", "export-receipt", "clarification-output",
   "ai-summary", "ai-summary-text", "ai-summary-scope", "ai-summary-note", "ai-summary-button", "ai-summary-regenerate", "ai-summary-remove",
-  "ai-approval", "ai-approval-details", "ai-approval-progress", "ai-approve-button", "ai-approval-cancel", "ai-approval-retry",
+  "ai-approval", "ai-approval-details", "ai-approval-warning", "ai-approval-progress", "ai-approve-button", "ai-approval-cancel", "ai-approval-retry",
   "followups", "followups-list",
   "cancel-resource-button", "resource-status", "cancel-query-button", "query-status",
   "activity-list", "copy-diagnostics-button", "download-diagnostics-button", "clear-diagnostics-button", "diagnostics-status",
@@ -71,6 +71,22 @@ let resourceAbortController = null;
 let queryAbortController = null;
 let joinTargetDataset = null;
 let joinEvidence = null;
+
+// Move the reader to the section that just became relevant so completing one
+// step visibly leads to the next. Focus goes to the section's heading (made
+// programmatically focusable) so keyboard and screen-reader users land there
+// too, not only sighted users who can see the scroll. Honors reduced-motion.
+function guideToSection(sectionId, headingId) {
+  const section = document.getElementById(sectionId);
+  if (!section || section.hidden) return;
+  const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+  section.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+  const heading = headingId ? document.getElementById(headingId) : null;
+  if (heading) {
+    if (!heading.hasAttribute("tabindex")) heading.setAttribute("tabindex", "-1");
+    heading.focus({ preventScroll: true });
+  }
+}
 
 function renderActivity(events) {
   elements["activity-list"].replaceChildren();
@@ -796,7 +812,8 @@ function loadLocalCsv(file) {
   };
   renderDataset(dataset);
   journey.reach(2);
-  setStatus(`Loaded ${file.name} from this computer. Choose Load selected resource to profile it locally.`, "info");
+  setStatus(`Loaded ${file.name} from this computer. Step 2 of 6: review the details below, then choose Load selected resource to profile it locally.`, "info");
+  guideToSection("dataset-section", "dataset-heading");
 }
 
 async function inspectUrl(url) {
@@ -809,7 +826,8 @@ async function inspectUrl(url) {
     const dataset = await resolveDataset(url);
     renderDataset(dataset);
     journey.reach(2);
-    setStatus(`Found ${dataset.title}. Choose a resource to load.`);
+    setStatus(`Found ${dataset.title}. Step 2 of 6: choose a resource below, then select Load selected resource.`);
+    guideToSection("dataset-section", "dataset-heading");
     return dataset;
   } catch (error) {
     setStatus(classifyLoadError(error, url), "error");
@@ -883,7 +901,8 @@ elements["load-resource-button"].addEventListener("click", async () => {
         : "The saved analysis source is unchanged. Review the fields and query plan before running it.", "info", elements["resource-status"]);
       pendingHistoryRecord = null;
     } else {
-      setStatus("Resource loaded. The preview, fields, and question builder are ready.", "info", elements["resource-status"]);
+      setStatus("Resource loaded. Step 3 of 6: the Dataset Overview below shows the fields and quality; scroll on to Ask a reproducible question when ready.", "info", elements["resource-status"]);
+      guideToSection("explore-section", "explore-heading");
     }
   } catch (error) {
     const cancelled = error.name === "AbortError" || resourceAbortController.signal.aborted;
@@ -1079,8 +1098,8 @@ function datasetCard(dataset) {
   inspect.textContent = "Inspect again";
   inspect.addEventListener("click", () => {
     elements["dataset-url"].value = dataset.sourceUrl;
+    // inspectUrl guides focus to the dataset section on success, so no manual scroll here.
     inspectUrl(dataset.sourceUrl);
-    window.scrollTo({ top: 0, behavior: "smooth" });
   });
   const source = document.createElement("a");
   source.href = dataset.sourceUrl;
@@ -1520,11 +1539,12 @@ function renderCapabilityReport(report, decision) {
     localPlanner.addEventListener("click", runHuggingFacePlanner);
     container.append(localPlanner);
     const localNote = document.createElement("p");
-    localNote.textContent = "Optional local AI planner: about 500 MB, downloaded only after approval and kept in the browser-managed cache. It runs on WebGPU in a background worker, so it does not freeze the page. It suggests a plan; deterministic code validates and runs the query.";
+    localNote.className = "notice";
+    localNote.textContent = "Heads up: this optional local planner downloads about 500 MB and loads it into your graphics (WebGPU) memory. On computers with limited memory — roughly 8 GB or less, including many laptops — that can make the whole computer unresponsive and force a restart. It runs off the main thread, so the page stays responsive, but that does not protect the rest of your system. Nothing is downloaded until you approve it, and deterministic planning works without it.";
     container.append(localNote);
   } else if (currentDataset && currentFields.length) {
     const localNote = document.createElement("p");
-    localNote.textContent = "The optional local AI planner is not offered here because this browser does not expose WebGPU. Without it the model would run on CPU and could make the page unresponsive. Deterministic planning remains fully available.";
+    localNote.textContent = `The optional local AI planner is not offered here. ${report.compute.webgpuReason || "This browser does not expose a usable WebGPU adapter, so the model would run on CPU and could make the page unresponsive."} Deterministic planning remains fully available.`;
     container.append(localNote);
   }
   if (decision.queryPlanner === "browser-downloadable") {
@@ -1596,7 +1616,13 @@ async function runBrowserPlanner() {
 
 async function runHuggingFacePlanner() {
   if (!currentDataset || !currentFields.length) return;
-  if (!window.confirm("Download and run the optional local Hugging Face model? The browser will manage about 500 MB of model files. It runs on WebGPU in a background worker, so it will not freeze the page.")) return;
+  const { probeWebGpu } = await import("./ai/browser-capabilities.js");
+  const gpu = await probeWebGpu(window);
+  if (!gpu.usable) {
+    setStatus(`The local model cannot run here. ${gpu.reason} Deterministic planning remains available.`, "error");
+    return;
+  }
+  if (!window.confirm("Download and run the optional local model? The browser will manage about 500 MB of model files and load them into your graphics (WebGPU) memory.\n\nWarning: on computers with limited memory (roughly 8 GB or less), this can make the whole computer unresponsive and may force a restart. The page itself stays responsive because the model runs off the main thread, but that does not protect the rest of your system.\n\nDeterministic planning works without it.")) return;
   plannerAbortController = new AbortController();
   const cancel = document.createElement("button");
   cancel.type = "button";
@@ -1647,6 +1673,8 @@ function resetAiSummary() {
   elements["ai-summary-note"].textContent = "";
   elements["ai-approval-progress"].textContent = "";
   elements["ai-approval-retry"].hidden = true;
+  elements["ai-approval-warning"].hidden = true;
+  elements["ai-approval-warning"].textContent = "";
 }
 
 // Offer bounded next steps instead of an open-ended chatbot.
@@ -1671,9 +1699,11 @@ function renderFollowups() {
 }
 
 // Describe the AI option the capability probe found, without downloading anything.
-// `webgpu` gates the local fallback: without it, a CPU-only model would freeze the
-// page, so no local option is offered.
-function describeSummaryOption(decision, webgpu) {
+// `compute` gates the local fallback: without a usable WebGPU adapter (and enough
+// device memory), the model is not offered, because it would either run on CPU and
+// freeze the page or exhaust memory and destabilise the whole computer.
+function describeSummaryOption(decision, compute) {
+  const webgpu = compute && typeof compute === "object" ? compute.webgpu : compute;
   if (decision.queryPlanner === "browser-ready") {
     return { kind: "browser", label: "Browser-provided AI", needsDownload: false, rows: [
       ["Provider", "Browser-provided AI (Prompt API)"],
@@ -1693,13 +1723,14 @@ function describeSummaryOption(decision, webgpu) {
     ] };
   }
   if (!webgpu) {
-    return { kind: "none", label: "No local AI available" };
+    return { kind: "none", label: "No local AI available", reason: compute?.webgpuReason || "" };
   }
-  return { kind: "local", label: "Local Hugging Face model", needsDownload: true, rows: [
+  return { kind: "local", label: "Local Hugging Face model", needsDownload: true, warning: "This loads about 500 MB into your graphics (WebGPU) memory. On computers with limited memory (roughly 8 GB or less), that can make the whole computer unresponsive and force a restart.", rows: [
     ["Provider", "Local Hugging Face model"],
     ["Model", `${LOCAL_MODEL_ID} (revision ${LOCAL_MODEL_REVISION})`],
     ["Download", "About 500 MB, started only after you approve it"],
-    ["Runs on", "WebGPU, in a background worker, so it does not freeze the page"],
+    ["Runs on", "WebGPU graphics memory, in a background worker. The page stays responsive, but on low-memory computers the rest of your system may not"],
+    ["Memory warning", "On machines with limited memory (roughly 8 GB or less), loading the model can freeze the whole computer and force a restart"],
     ["Hosting", "Downloaded from the Hugging Face CDN and cached by your browser"],
     ["Caching and removal", "Cached by your browser; remove it through site settings or Delete local application data"],
   ] };
@@ -1717,13 +1748,15 @@ async function openAiApproval() {
     const { probeBrowserCapabilities, capabilityDecision } = await import("./ai/browser-capabilities.js");
     const report = await probeBrowserCapabilities(window);
     const decision = capabilityDecision(report);
-    const option = describeSummaryOption(decision, report.compute.webgpu);
+    const option = describeSummaryOption(decision, report.compute);
     if (option.kind === "none") {
-      setStatus("No page-accessible browser AI was found, and the local model is not offered because this browser does not expose WebGPU (it would run on CPU and could make the page unresponsive). The deterministic summary above remains the authoritative result.", "info", elements["query-status"]);
+      setStatus(`No page-accessible browser AI was found, and the local model is not offered. ${option.reason || "This browser does not expose a usable WebGPU adapter, so a local model would run on CPU and could make the page unresponsive."} The deterministic summary above remains the authoritative result.`, "info", elements["query-status"]);
       return;
     }
     pendingSummaryOption = option;
     metadataList(elements["ai-approval-details"], option.rows);
+    elements["ai-approval-warning"].textContent = option.warning || "";
+    elements["ai-approval-warning"].hidden = !option.warning;
     elements["ai-approve-button"].textContent = option.needsDownload ? "Approve download and generate" : "Approve and generate";
     elements["ai-approval-progress"].textContent = "";
     elements["ai-approval-retry"].hidden = true;
