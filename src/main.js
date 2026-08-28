@@ -24,6 +24,7 @@ import { buildFactPacket } from "./ai/summary.js";
 
 const LOCAL_MODEL_ID = "onnx-community/Qwen2.5-0.5B-Instruct";
 const LOCAL_MODEL_REVISION = "cc5cc01a65cc3ff17bdb73a7de33d879f62599b0";
+import { describeModelDownload } from "./ai/providers.js";
 import { analyzeJoinCandidate, joinPreview, validateJoinCandidate, joinComparison } from "./catalog/relationships.js";
 
 const elements = Object.fromEntries([
@@ -1553,7 +1554,7 @@ function renderCapabilityReport(report, decision) {
     container.append(localPlanner);
     const localNote = document.createElement("p");
     localNote.className = "notice";
-    localNote.textContent = "Heads up: this optional local planner downloads about 500 MB and loads it into your graphics (WebGPU) memory. On computers with limited memory — roughly 8 GB or less, including many laptops — that can make the whole computer unresponsive and force a restart. It runs off the main thread, so the page stays responsive, but that does not protect the rest of your system. Nothing is downloaded until you approve it, and deterministic planning works without it.";
+    localNote.textContent = `Heads up: this optional local planner downloads ${describeModelDownload(LOCAL_MODEL_ID)} and loads it into your graphics (WebGPU) memory. On computers with limited memory — roughly 8 GB or less, including many laptops — that can make the whole computer unresponsive and force a restart. It runs off the main thread, so the page stays responsive, but that does not protect the rest of your system. Nothing is downloaded until you approve it, and deterministic planning works without it.`;
     container.append(localNote);
   } else if (currentDataset && currentFields.length) {
     const localNote = document.createElement("p");
@@ -1629,13 +1630,14 @@ async function runBrowserPlanner() {
 
 async function runHuggingFacePlanner() {
   if (!currentDataset || !currentFields.length) return;
-  const { probeWebGpu } = await import("./ai/browser-capabilities.js");
+  const { probeWebGpu, connectionWarning } = await import("./ai/browser-capabilities.js");
   const gpu = await probeWebGpu(window);
   if (!gpu.usable) {
     setStatus(`The local model cannot run here. ${gpu.reason} Deterministic planning remains available.`, "error");
     return;
   }
-  if (!window.confirm("Download and run the optional local model? The browser will manage about 500 MB of model files and load them into your graphics (WebGPU) memory.\n\nWarning: on computers with limited memory (roughly 8 GB or less), this can make the whole computer unresponsive and may force a restart. The page itself stays responsive because the model runs off the main thread, but that does not protect the rest of your system.\n\nDeterministic planning works without it.")) return;
+  const netCaution = connectionWarning(window);
+  if (!window.confirm(`Download and run the optional local model? The browser will manage ${describeModelDownload(LOCAL_MODEL_ID)} of model files and load them into your graphics (WebGPU) memory.\n\nWarning: on computers with limited memory (roughly 8 GB or less), this can make the whole computer unresponsive and may force a restart. The page itself stays responsive because the model runs off the main thread, but that does not protect the rest of your system.${netCaution ? `\n\n${netCaution}` : ""}\n\nDeterministic planning works without it.`)) return;
   plannerAbortController = new AbortController();
   const cancel = document.createElement("button");
   cancel.type = "button";
@@ -1651,8 +1653,10 @@ async function runHuggingFacePlanner() {
       root: window,
       signal: plannerAbortController.signal,
       onProgress: (progress) => {
-        if (progress.status === "progress" && progress.progress) setStatus(`Downloading the optional local model: ${Math.round(progress.progress)}%`);
+        const percent = progress.aggregateProgress ?? progress.progress;
+        if (progress.status === "progress" && percent) setStatus(`Downloading the optional local model: ${Math.round(percent)}%`);
       },
+      onNotice: (notice) => setStatus(notice.message, "info"),
     });
     activePlanner = provider;
     const plan = await provider.plan({ question: elements.question.value, dataset: currentDataset, fields: currentFields });
@@ -1738,10 +1742,10 @@ function describeSummaryOption(decision, compute) {
   if (!webgpu) {
     return { kind: "none", label: "No local AI available", reason: compute?.webgpuReason || "" };
   }
-  return { kind: "local", label: "Local Hugging Face model", needsDownload: true, warning: "This loads about 500 MB into your graphics (WebGPU) memory. On computers with limited memory (roughly 8 GB or less), that can make the whole computer unresponsive and force a restart.", rows: [
+  return { kind: "local", label: "Local Hugging Face model", needsDownload: true, warning: `This loads ${describeModelDownload(LOCAL_MODEL_ID)} into your graphics (WebGPU) memory. On computers with limited memory (roughly 8 GB or less), that can make the whole computer unresponsive and force a restart.`, rows: [
     ["Provider", "Local Hugging Face model"],
     ["Model", `${LOCAL_MODEL_ID} (revision ${LOCAL_MODEL_REVISION})`],
-    ["Download", "About 500 MB, started only after you approve it"],
+    ["Download", `${describeModelDownload(LOCAL_MODEL_ID)}, started only after you approve it`],
     ["Runs on", "WebGPU graphics memory, in a background worker. The page stays responsive, but on low-memory computers the rest of your system may not"],
     ["Memory warning", "On machines with limited memory (roughly 8 GB or less), loading the model can freeze the whole computer and force a restart"],
     ["Hosting", "Downloaded from the Hugging Face CDN and cached by your browser"],
@@ -1758,7 +1762,7 @@ async function openAiApproval() {
   resetAiSummary();
   setStatus("Checking page-accessible AI. No model is downloaded during this check.", "info", elements["query-status"]);
   try {
-    const { probeBrowserCapabilities, capabilityDecision } = await import("./ai/browser-capabilities.js");
+    const { probeBrowserCapabilities, capabilityDecision, connectionWarning } = await import("./ai/browser-capabilities.js");
     const report = await probeBrowserCapabilities(window);
     const decision = capabilityDecision(report);
     const option = describeSummaryOption(decision, report.compute);
@@ -1768,8 +1772,11 @@ async function openAiApproval() {
     }
     pendingSummaryOption = option;
     metadataList(elements["ai-approval-details"], option.rows);
-    elements["ai-approval-warning"].textContent = option.warning || "";
-    elements["ai-approval-warning"].hidden = !option.warning;
+    // Combine the memory warning with a connection caution when a download over
+    // a cellular/metered link would otherwise burn mobile data silently.
+    const combinedWarning = [option.warning, option.needsDownload ? connectionWarning(window) : ""].filter(Boolean).join(" ");
+    elements["ai-approval-warning"].textContent = combinedWarning;
+    elements["ai-approval-warning"].hidden = !combinedWarning;
     elements["ai-approve-button"].textContent = option.needsDownload ? "Approve download and generate" : "Approve and generate";
     elements["ai-approval-progress"].textContent = "";
     elements["ai-approval-retry"].hidden = true;
@@ -1793,7 +1800,7 @@ async function generateAiSummary() {
   try {
     const { createChromePromptProvider, createHuggingFaceProvider } = await import("./ai/providers.js");
     if (option.kind === "local") {
-      provider = createHuggingFaceProvider({ approved: true, root: window, signal: aiSummaryController.signal, onProgress: (event) => { if (event?.status === "progress" && event.progress) progress.textContent = `Downloading the local model: ${Math.round(event.progress)}%`; } });
+      provider = createHuggingFaceProvider({ approved: true, root: window, signal: aiSummaryController.signal, onProgress: (event) => { const percent = event?.aggregateProgress ?? event?.progress; if (event?.status === "progress" && percent) progress.textContent = `Downloading the local model: ${Math.round(percent)}%`; }, onNotice: (notice) => { progress.textContent = notice.message; } });
     } else {
       provider = createChromePromptProvider(window, { signal: aiSummaryController.signal });
       if (option.needsDownload) await provider.prepare((event) => { progress.textContent = `Browser-managed model download: ${Math.round(Number(event) * 100)}%`; });

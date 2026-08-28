@@ -1,5 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
-import { createChromePromptProvider, createHuggingFaceProvider, deterministicProvider, localModelSupported, providerDecision, validateProviderPlan } from "../src/ai/providers.js";
+import { createChromePromptProvider, createHuggingFaceProvider, deterministicProvider, describeModelDownload, localModelSupported, modelDownloadSizeMb, providerDecision, validateProviderPlan } from "../src/ai/providers.js";
+
+describe("model download size disclosure", () => {
+  it("reports the reviewed size for the shipped model and dtype", () => {
+    expect(modelDownloadSizeMb("onnx-community/Qwen2.5-0.5B-Instruct", "q4")).toBe(500);
+    expect(describeModelDownload("onnx-community/Qwen2.5-0.5B-Instruct", "q4")).toBe("about 500 MB");
+  });
+
+  it("formats sizes at or above 1000 MB as GB", () => {
+    expect(describeModelDownload("onnx-community/Qwen2.5-0.5B-Instruct", "q4")).toMatch(/MB/);
+    // A hypothetical large entry would read as GB (formatting is size-driven).
+    expect(describeModelDownload("unknown/model", "q4")).toBe("size not known in advance");
+  });
+});
 
 // Minimal fake of a module worker: routes postMessage to a responder that emits
 // the messages the real worker would, so the provider can be tested without CDN.
@@ -94,6 +107,25 @@ describe("analysis plan providers", () => {
     controller.abort();
     const provider = createHuggingFaceProvider({ approved: true, signal: controller.signal, createWorker: () => fakeWorker(() => {}) });
     await expect(provider.plan({ question: "count by state", dataset: {}, fields })).rejects.toMatchObject({ name: "AbortError" });
+  });
+
+  it("forwards a GPU-fallback notice without resolving the pending request", async () => {
+    const notices = [];
+    const provider = createHuggingFaceProvider({
+      approved: true,
+      device: "webgpu",
+      onNotice: (notice) => notices.push(notice),
+      // The worker emits a notice (GPU lost, retrying on CPU) and then the result.
+      createWorker: () => fakeWorker((data, emit) => {
+        emit.message({ id: data.id, type: "notice", reason: "gpu-fallback", message: "retrying on the CPU" });
+        emit.message({ id: data.id, type: "result", text: JSON.stringify({ version: 1, status: "ready", question: "count by state", aggregation: "count", measure: "", dimension: "state", filters: [], limit: 100, visualization: { kind: "bar", x: "state", y: "value", series: null } }) });
+      }),
+    });
+    const plan = await provider.plan({ question: "count by state", dataset: {}, fields });
+    expect(plan.aggregation).toBe("count");
+    expect(notices).toHaveLength(1);
+    expect(notices[0].reason).toBe("gpu-fallback");
+    await provider.close();
   });
 
   it("surfaces a worker error as a rejected plan", async () => {

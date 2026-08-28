@@ -2,10 +2,34 @@ import { capabilityDecision, normalizeAvailability, resolvePath } from "./browse
 import { interpretQuestion, validatePlan } from "../query/plan.js";
 import { SUMMARY_SCHEMA, summarizeResult } from "./summary.js";
 
+// The quantization the worker actually downloads and runs. Kept next to the
+// size table so the disclosed download size always matches the files fetched.
+export const LOCAL_MODEL_DTYPE = "q4";
+
+// Reviewed approximate on-disk download sizes in MB, keyed by model id then
+// dtype. Only the dtype the app ships is listed, so the disclosure never
+// asserts a size for files it does not fetch. Extend when adding a model/dtype.
+export const MODEL_DOWNLOAD_SIZES = {
+  "onnx-community/Qwen2.5-0.5B-Instruct": { q4: 500 },
+};
+
+export function modelDownloadSizeMb(modelId, dtype = LOCAL_MODEL_DTYPE) {
+  return MODEL_DOWNLOAD_SIZES[modelId]?.[dtype];
+}
+
+// Human-readable size ("about 500 MB", "about 1.5 GB"), or a hedge when the
+// size is not known in advance rather than a made-up number.
+export function describeModelDownload(modelId, dtype = LOCAL_MODEL_DTYPE) {
+  const mb = modelDownloadSizeMb(modelId, dtype);
+  if (!mb) return "size not known in advance";
+  return mb >= 1000 ? `about ${(mb / 1000).toFixed(1)} GB` : `about ${mb} MB`;
+}
+
 export const LOCAL_MODEL = {
   id: "onnx-community/Qwen2.5-0.5B-Instruct",
   revision: "cc5cc01a65cc3ff17bdb73a7de33d879f62599b0",
-  approximateDownload: "about 500 MB, browser-managed cache",
+  dtype: LOCAL_MODEL_DTYPE,
+  approximateDownload: `${describeModelDownload("onnx-community/Qwen2.5-0.5B-Instruct", LOCAL_MODEL_DTYPE)}, browser-managed cache`,
 };
 
 // Pinned so the worker imports exactly the version the app was tested against.
@@ -207,6 +231,7 @@ export function createHuggingFaceProvider(options = {}) {
         const data = message.data || {};
         if (data.id !== id) return;
         if (data.type === "progress") { options.onProgress?.(data.event); return; }
+        if (data.type === "notice") { options.onNotice?.(data); return; }
         cleanup();
         if (data.type === "result") resolve(data.text);
         else if (data.type === "error") { const error = new Error(data.message); error.name = data.name || "Error"; reject(error); }
@@ -222,7 +247,7 @@ export function createHuggingFaceProvider(options = {}) {
       activeWorker.addEventListener("message", onMessage);
       activeWorker.addEventListener("error", onError);
       options.signal?.addEventListener("abort", onAbort, { once: true });
-      activeWorker.postMessage({ id, type: "generate", cdnUrl: TRANSFORMERS_CDN_URL, modelId: LOCAL_MODEL.id, revision: LOCAL_MODEL.revision, device, dtype: "q4", prompt, options: generationOptions });
+      activeWorker.postMessage({ id, type: "generate", cdnUrl: TRANSFORMERS_CDN_URL, modelId: LOCAL_MODEL.id, revision: LOCAL_MODEL.revision, device, dtype: LOCAL_MODEL_DTYPE, prompt, options: generationOptions });
     });
   }
 
