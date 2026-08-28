@@ -1654,6 +1654,7 @@ async function runHuggingFacePlanner() {
         const percent = progress.aggregateProgress ?? progress.progress;
         if (progress.status === "progress" && percent) setStatus(`Downloading the optional local model: ${Math.round(percent)}%`);
       },
+      onNotice: (notice) => setStatus(notice.message, "info"),
     });
     activePlanner = provider;
     const plan = await provider.plan({ question: elements.question.value, dataset: currentDataset, fields: currentFields });
@@ -1794,7 +1795,7 @@ async function generateAiSummary() {
   try {
     const { createChromePromptProvider, createHuggingFaceProvider } = await import("./ai/providers.js");
     if (option.kind === "local") {
-      provider = createHuggingFaceProvider({ approved: true, root: window, signal: aiSummaryController.signal, onProgress: (event) => { const percent = event?.aggregateProgress ?? event?.progress; if (event?.status === "progress" && percent) progress.textContent = `Downloading the local model: ${Math.round(percent)}%`; } });
+      provider = createHuggingFaceProvider({ approved: true, root: window, signal: aiSummaryController.signal, onProgress: (event) => { const percent = event?.aggregateProgress ?? event?.progress; if (event?.status === "progress" && percent) progress.textContent = `Downloading the local model: ${Math.round(percent)}%`; }, onNotice: (notice) => { progress.textContent = notice.message; } });
     } else {
       provider = createChromePromptProvider(window, { signal: aiSummaryController.signal });
       if (option.needsDownload) await provider.prepare((event) => { progress.textContent = `Browser-managed model download: ${Math.round(Number(event) * 100)}%`; });

@@ -207,6 +207,7 @@ export function createHuggingFaceProvider(options = {}) {
         const data = message.data || {};
         if (data.id !== id) return;
         if (data.type === "progress") { options.onProgress?.(data.event); return; }
+        if (data.type === "notice") { options.onNotice?.(data); return; }
         cleanup();
         if (data.type === "result") resolve(data.text);
         else if (data.type === "error") { const error = new Error(data.message); error.name = data.name || "Error"; reject(error); }

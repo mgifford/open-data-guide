@@ -96,6 +96,25 @@ describe("analysis plan providers", () => {
     await expect(provider.plan({ question: "count by state", dataset: {}, fields })).rejects.toMatchObject({ name: "AbortError" });
   });
 
+  it("forwards a GPU-fallback notice without resolving the pending request", async () => {
+    const notices = [];
+    const provider = createHuggingFaceProvider({
+      approved: true,
+      device: "webgpu",
+      onNotice: (notice) => notices.push(notice),
+      // The worker emits a notice (GPU lost, retrying on CPU) and then the result.
+      createWorker: () => fakeWorker((data, emit) => {
+        emit.message({ id: data.id, type: "notice", reason: "gpu-fallback", message: "retrying on the CPU" });
+        emit.message({ id: data.id, type: "result", text: JSON.stringify({ version: 1, status: "ready", question: "count by state", aggregation: "count", measure: "", dimension: "state", filters: [], limit: 100, visualization: { kind: "bar", x: "state", y: "value", series: null } }) });
+      }),
+    });
+    const plan = await provider.plan({ question: "count by state", dataset: {}, fields });
+    expect(plan.aggregation).toBe("count");
+    expect(notices).toHaveLength(1);
+    expect(notices[0].reason).toBe("gpu-fallback");
+    await provider.close();
+  });
+
   it("surfaces a worker error as a rejected plan", async () => {
     const provider = createHuggingFaceProvider({
       approved: true,
