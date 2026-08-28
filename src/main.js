@@ -14,6 +14,8 @@ import { renderSchematic } from "./render/schematic.js";
 import { describeResult } from "./render/advisor.js";
 import { downloadText, resultsToCsv, resultsToJson } from "./render/export.js";
 import { shouldRefuseResource, describeFieldObservations } from "./data/ingestion.js";
+import { inferPointFields } from "./data/geo-inference.js";
+import { renderPointMap } from "./render/geo-map.js";
 import { datastoreResource, runDataStorePlan } from "./data/datastore.js";
 import { createActivityLog } from "./ui/activity.js";
 import { createJourney } from "./ui/journey.js";
@@ -30,7 +32,7 @@ const elements = Object.fromEntries([
   "load-resource-button", "save-button", "explore-section", "profile-summary", "fields-table",
   "preview-table", "quality-summary", "question-section", "question-form", "question", "question-interpret-button", "plan-form", "aggregation",
   "measure", "dimension", "run-plan-button", "plan-review", "query-output", "result-explanation", "result-table", "chart", "sql-output", "download-csv-button", "download-json-button", "download-spec-button",
-    "schematic-view",
+    "schematic-view", "geo-map",
   "date-grain", "date-grain-note", "filter-list", "filters-note", "add-filter-button",
   "provenance", "saved-list", "related-list", "semantic-button", "capability-output",
   "catalog-form", "catalog-select", "catalog-details", "catalog-publisher-link", "catalog-url", "catalog-query", "catalog-results",
@@ -739,6 +741,17 @@ function renderProfile(profile) {
   elements["quality-summary"].append(qualityHeading, qualityNote, qualityTable);
   renderTable(qualityTable, qualityRows, "Profile for fields used in analysis");
   renderSchematic(elements["schematic-view"], currentFields, currentQualities, currentResource, applySuggestion);
+  // Infer a coordinate pair from the VALUES so a misspelled or cryptic
+  // latitude/longitude header is still recognised, backfill the semantic roles
+  // for the rest of the app, and draw a tile-less station map.
+  elements["geo-map"].replaceChildren();
+  const point = inferPointFields(currentFields, previewRows);
+  if (point) {
+    if (!point.latitude.semanticRole) point.latitude.semanticRole = "latitude";
+    if (!point.longitude.semanticRole) point.longitude.semanticRole = "longitude";
+    renderPointMap(elements["geo-map"], { latField: point.latitude.name, lonField: point.longitude.name, rows: previewRows })
+      .catch((error) => setStatus(`The station map could not be drawn: ${error.message} The data and table are unaffected.`, "error", elements["resource-status"]));
+  }
   fillSelect(elements.measure, numeric, false);
   fillSelect(elements.dimension, currentFields, true);
   renderFilterRows([]);
