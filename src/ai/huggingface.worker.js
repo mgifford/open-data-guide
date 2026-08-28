@@ -8,6 +8,13 @@
 // Messages out: { id, type: "progress", event }   during model download
 //               { id, type: "result", text }      on success
 //               { id, type: "error", message, name } on failure
+//
+// The model is several files (config, tokenizer, ONNX weights). Transformers.js
+// reports progress per file, so a single file's percent lurches back to 0 each
+// time a new file starts. We aggregate by bytes across every in-flight file so
+// the reported percent advances monotonically over the whole download.
+
+import { createAggregateReporter } from "./progress.js";
 
 let pipelinePromise = null;
 let loadedKey = "";
@@ -31,7 +38,7 @@ self.addEventListener("message", async (message) => {
   try {
     const generator = await getGenerator(
       { cdnUrl, modelId, revision, device, dtype },
-      (event) => self.postMessage({ id, type: "progress", event }),
+      createAggregateReporter(id, (message) => self.postMessage(message)),
     );
     const output = await generator(prompt, options);
     const text = Array.isArray(output) ? output[0]?.generated_text || "" : String(output || "");
