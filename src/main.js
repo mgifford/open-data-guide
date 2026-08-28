@@ -759,8 +759,11 @@ function renderProfile(profile) {
   if (point) {
     if (!point.latitude.semanticRole) point.latitude.semanticRole = "latitude";
     if (!point.longitude.semanticRole) point.longitude.semanticRole = "longitude";
-    renderPointMap(elements["geo-map"], { latField: point.latitude.name, lonField: point.longitude.name, rows: previewRows })
-      .catch((error) => setStatus(`The station map could not be drawn: ${error.message} The data and table are unaffected.`, "error", elements["resource-status"]));
+    try {
+      renderPointMap(elements["geo-map"], { latField: point.latitude.name, lonField: point.longitude.name, rows: previewRows });
+    } catch (error) {
+      setStatus(`The station map could not be drawn: ${error.message} The data and table are unaffected.`, "error", elements["resource-status"]);
+    }
   }
   fillSelect(elements.measure, numeric, false);
   fillSelect(elements.dimension, currentFields, true);

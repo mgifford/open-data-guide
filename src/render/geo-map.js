@@ -1,15 +1,22 @@
-import embed from "vega-embed";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 import { describePointGeography } from "../data/geo-inference.js";
 
-// A tile-less coordinate plot of the previewed points. It is NOT a street map:
-// there is no basemap and no external tile server, which keeps the app
-// local-first (nothing about what you are viewing leaves the browser). The
-// points are drawn from the inferred latitude/longitude columns, the axes are
-// fitted to the data's own extent, and an optional reviewed region rectangle
-// gives context. An accessible description and the geography summary carry the
-// same information in text.
+// The previewed points drawn on an OpenStreetMap basemap with Leaflet, so the
+// locations sit on a recognisable map rather than a bare scatter. Trade-off: the
+// basemap tiles load from OpenStreetMap, an external service, so the fact that
+// you are viewing this area does leave the browser — but the dataset itself is
+// still only read and queried locally. Markers are drawn as SVG circles (no
+// image assets, so no bundler icon-path issues), and an accessible description
+// plus the geography summary carry the same information in text.
 
 export const MAP_POINT_LIMIT = 2000;
+const OSM_TILES = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
+const OSM_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+
+// One live map instance at a time; removed before re-rendering so Leaflet does
+// not leak listeners or complain that the container is already initialised.
+let activeMap = null;
 
 function round(value, places = 4) {
   const factor = 10 ** places;
@@ -27,101 +34,60 @@ function uniquePoints(points) {
   return [...seen.values()].slice(0, MAP_POINT_LIMIT);
 }
 
-function paddedDomain(min, max) {
-  const span = max - min || 1;
-  const pad = span * 0.08;
-  return [round(min - pad), round(max + pad)];
-}
-
 // Render into `container`. Returns the geography summary (also used for a text
 // insight elsewhere), or null when there is nothing plottable.
-export async function renderPointMap(container, { latField, lonField, rows = [] }) {
+export function renderPointMap(container, { latField, lonField, rows = [] }) {
+  if (activeMap) { activeMap.remove(); activeMap = null; }
   container.replaceChildren();
   const geography = describePointGeography(latField, lonField, rows);
   if (!geography.count) return null;
 
   const points = uniquePoints(geography.points);
   const { bbox, centroid, matchedRegions } = geography;
+  const region = matchedRegions?.[0];
 
   const heading = document.createElement("h3");
   heading.textContent = "Station location map";
-  container.append(heading);
 
   const caption = document.createElement("p");
   caption.className = "field-hint";
-  caption.textContent = `Coordinate plot of ${points.length} unique point(s) from the previewed rows, using ${latField} (latitude) and ${lonField} (longitude). This is a plot of the coordinates, not a street map — no map tiles are loaded and nothing about your view leaves the browser.`;
-  container.append(caption);
+  caption.textContent = `${points.length} unique point(s) from the previewed rows, using ${latField} (latitude) and ${lonField} (longitude), shown on an OpenStreetMap basemap. The map tiles load from OpenStreetMap (an external service); your dataset itself stays in this browser.`;
 
   const insight = document.createElement("p");
   insight.textContent = geography.text;
-  container.append(insight);
 
-  const description = document.createElement("p");
   const descriptionId = `map-description-${crypto.randomUUID()}`;
+  const description = document.createElement("p");
   description.id = descriptionId;
   description.className = "visually-hidden";
-  const region = matchedRegions?.[0];
-  description.textContent = `Coordinate plot of ${points.length} unique previewed point(s). Latitude spans ${round(bbox.latMin)} to ${round(bbox.latMax)} and longitude spans ${round(bbox.lonMin)} to ${round(bbox.lonMax)}, centred near ${centroid.lat}, ${centroid.lon}.${region ? ` The points fall within the approximate extent of ${region.label}.` : ""} Full values are in the preview table above.`;
+  description.textContent = `Map of ${points.length} unique previewed point(s) on an OpenStreetMap basemap. Latitude spans ${round(bbox.latMin)} to ${round(bbox.latMax)} and longitude spans ${round(bbox.lonMin)} to ${round(bbox.lonMax)}, centred near ${centroid.lat}, ${centroid.lon}.${region ? ` The points fall within the approximate extent of ${region.label}.` : ""} Full values are in the preview table above.`;
 
   const mapHost = document.createElement("div");
-  mapHost.className = "chart-host";
-  mapHost.setAttribute("role", "img");
+  mapHost.className = "geo-map-canvas";
+  mapHost.setAttribute("role", "region");
   mapHost.setAttribute("aria-describedby", descriptionId);
-  mapHost.setAttribute("aria-label", `Coordinate plot of ${points.length} previewed points by latitude and longitude; see the description and preview table for values.`);
-  container.append(description, mapHost);
+  mapHost.setAttribute("aria-label", `Map of ${points.length} previewed points on an OpenStreetMap basemap; see the description and preview table for values.`);
 
-  // Frame the plot to the data, extended to include the matched region's extent
-  // when there is one, so the points sit inside a recognisable box (e.g. the
-  // outline of California) rather than filling the whole world or a tiny sliver.
-  const frameLon = region ? [Math.min(bbox.lonMin, region.lonMin), Math.max(bbox.lonMax, region.lonMax)] : [bbox.lonMin, bbox.lonMax];
-  const frameLat = region ? [Math.min(bbox.latMin, region.latMin), Math.max(bbox.latMax, region.latMax)] : [bbox.latMin, bbox.latMax];
-  const xDomain = paddedDomain(frameLon[0], frameLon[1]);
-  const yDomain = paddedDomain(frameLat[0], frameLat[1]);
-  // Correct for longitude compression at this latitude so the plot is not
-  // horizontally stretched, then clamp to a sensible on-screen size.
-  const lonSpan = xDomain[1] - xDomain[0];
-  const latSpan = yDomain[1] - yDomain[0];
-  const cos = Math.max(0.2, Math.cos((centroid.lat * Math.PI) / 180));
-  const width = Math.max(1, Math.min(640, mapHost.clientWidth || 420));
-  const height = Math.max(220, Math.min(560, Math.round((width * latSpan) / (lonSpan * cos || 1))));
-  // zero:false is essential: the region rect mark otherwise forces 0 into the
-  // shared scale, which would un-zoom the whole plot back to the full globe.
-  const xScale = { domain: xDomain, nice: false, zero: false };
-  const yScale = { domain: yDomain, nice: false, zero: false };
+  container.append(heading, caption, insight, description, mapHost);
 
-  const layers = [];
-  if (region) {
-    layers.push({
-      data: { values: [{ x0: region.lonMin, x1: region.lonMax, y0: region.latMin, y1: region.latMax }] },
-      mark: { type: "rect", fill: "#3a7d5d", fillOpacity: 0.08, stroke: "#3a7d5d", strokeOpacity: 0.4 },
-      encoding: {
-        x: { field: "x0", type: "quantitative", scale: xScale, title: "Longitude" }, x2: { field: "x1" },
-        y: { field: "y0", type: "quantitative", scale: yScale, title: "Latitude" }, y2: { field: "y1" },
-      },
-    });
-  }
-  layers.push({
-    data: { values: points },
-    mark: { type: "circle", tooltip: true, size: 45, opacity: 0.75 },
-    encoding: {
-      x: { field: "longitude", type: "quantitative", title: "Longitude", scale: xScale },
-      y: { field: "latitude", type: "quantitative", title: "Latitude", scale: yScale },
-    },
+  // scrollWheelZoom off so the map does not trap page scrolling; keyboard pan/
+  // zoom stays on (Leaflet makes the container focusable) for keyboard users.
+  const map = L.map(mapHost, { scrollWheelZoom: false });
+  activeMap = map;
+  L.tileLayer(OSM_TILES, { maxZoom: 18, attribution: OSM_ATTRIBUTION }).addTo(map);
+
+  const latlngs = points.map((point) => [point.latitude, point.longitude]);
+  points.forEach((point) => {
+    L.circleMarker([point.latitude, point.longitude], { radius: 5, color: "#1d6b45", weight: 1, fillColor: "#2e8b57", fillOpacity: 0.85 })
+      .bindPopup(`${round(point.latitude)}, ${round(point.longitude)}`)
+      .addTo(map);
   });
 
-  const spec = {
-    $schema: "https://vega.github.io/schema/vega-lite/v6.json",
-    description: `Coordinate plot of previewed points by ${latField} and ${lonField}`,
-    width,
-    height,
-    layer: layers,
-    config: { view: { stroke: "#d0d0d0" } },
-  };
+  // Frame to the points (a single point gets a reasonable default zoom).
+  if (latlngs.length === 1) map.setView(latlngs[0], 9);
+  else map.fitBounds(L.latLngBounds(latlngs).pad(0.15));
+  // The container is sized by CSS after append; recompute once layout settles.
+  requestAnimationFrame(() => map.invalidateSize());
 
-  // actions:false removes Vega's built-in "⋯" export menu. Left on, it injects
-  // interactive controls (an unnamed <summary>, empty-href links) inside this
-  // role="img" host, which fails WCAG (nested-interactive, link-name,
-  // summary-name). The point plot is a preview; the preview table holds the data.
-  await embed(mapHost, spec, { actions: false, renderer: "svg" });
   return geography;
 }
