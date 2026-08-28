@@ -11,8 +11,12 @@ export const LOCAL_MODEL = {
 // Pinned so the worker imports exactly the version the app was tested against.
 export const TRANSFORMERS_CDN_URL = "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1";
 
-// The local model runs on WebGPU only. On a CPU-only WASM backend a 0.5B model is
-// slow enough to read as a hang, so callers should not offer it without WebGPU.
+// Cheap synchronous pre-check: is the WebGPU API even exposed? The local model
+// runs on WebGPU only — on a CPU-only WASM backend a 0.5B model is slow enough to
+// read as a hang. This only confirms the API exists; before offering the model,
+// callers MUST use the async `probeWebGpu` gate in browser-capabilities.js, which
+// resolves a real adapter and refuses low-memory devices where loading ~500 MB
+// into WebGPU memory can freeze the whole computer and force a restart.
 export function localModelSupported(root = globalThis) {
   return Boolean(root.navigator?.gpu);
 }

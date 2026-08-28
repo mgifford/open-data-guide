@@ -1,5 +1,41 @@
 import { describe, expect, it, vi } from "vitest";
-import { capabilityDecision, normalizeAvailability, probeBrowserCapabilities } from "../src/ai/browser-capabilities.js";
+import { capabilityDecision, normalizeAvailability, probeBrowserCapabilities, probeWebGpu } from "../src/ai/browser-capabilities.js";
+
+describe("WebGPU guardrail for the local model", () => {
+  it("refuses when the WebGPU API is not exposed", async () => {
+    const result = await probeWebGpu({ navigator: {} });
+    expect(result.usable).toBe(false);
+    expect(result.present).toBe(false);
+    expect(result.reason).toMatch(/WebGPU/i);
+  });
+
+  it("refuses low-memory devices before requesting an adapter", async () => {
+    const requestAdapter = vi.fn();
+    const result = await probeWebGpu({ navigator: { gpu: { requestAdapter }, deviceMemory: 4 } });
+    expect(result.usable).toBe(false);
+    expect(requestAdapter).not.toHaveBeenCalled();
+    expect(result.reason).toMatch(/restart/i);
+  });
+
+  it("refuses when no graphics adapter is available", async () => {
+    const result = await probeWebGpu({ navigator: { gpu: { requestAdapter: vi.fn().mockResolvedValue(null) }, deviceMemory: 8 } });
+    expect(result.usable).toBe(false);
+    expect(result.reason).toMatch(/adapter/i);
+  });
+
+  it("allows a machine with a working adapter and enough memory", async () => {
+    const result = await probeWebGpu({ navigator: { gpu: { requestAdapter: vi.fn().mockResolvedValue({ limits: {} }) }, deviceMemory: 8 } });
+    expect(result.usable).toBe(true);
+    expect(result.adapter).toBe(true);
+  });
+
+  it("surfaces a usable=false compute report through probeBrowserCapabilities", async () => {
+    const report = await probeBrowserCapabilities({ isSecureContext: true, navigator: { gpu: { requestAdapter: vi.fn().mockResolvedValue(null) } } }, 50);
+    expect(report.compute.webgpu).toBe(false);
+    expect(report.compute.webgpuPresent).toBe(true);
+    expect(report.compute.webgpuReason).toMatch(/adapter/i);
+  });
+});
 
 describe("browser AI capability detection", () => {
   it("normalizes current and earlier availability vocabulary", () => {

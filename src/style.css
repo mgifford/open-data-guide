@@ -27,17 +27,20 @@ a { color: var(--accent-strong); }
 .intro { max-width: 42rem; color: var(--muted); }
 .journey-nav { padding-block: 0 1.5rem; }
 .journey-list { list-style: none; display: flex; flex-wrap: wrap; gap: .5rem; margin: 0; padding: 0; counter-reset: journey; }
-.journey-step { flex: 1 1 9rem; min-width: 0; }
+.journey-step { flex: 1 1 9rem; min-width: 0; counter-increment: journey; }
 .journey-step-link { display: flex; align-items: center; gap: .5rem; padding: .55rem .7rem; border: 1px solid var(--border); border-radius: .45rem; text-decoration: none; color: var(--text); background: var(--surface); min-height: 2.8rem; }
 .journey-step-link[aria-current="step"] { border-color: var(--accent); background: var(--accent-soft); font-weight: 750; }
 .journey-step[data-state="complete"] .journey-step-link { border-color: var(--accent-strong); }
 .journey-step-link.is-upcoming { color: var(--muted); background: var(--background); cursor: not-allowed; }
-.journey-step-number { display: inline-flex; align-items: center; justify-content: center; width: 1.6rem; height: 1.6rem; border-radius: 50%; background: var(--accent); color: white; font-weight: 750; font-size: .85rem; flex: none; }
-.journey-step[data-state="upcoming"] .journey-step-number { background: var(--muted); }
+/* The number badge is drawn from the ordered-list counter so it has a single
+   source and never duplicates the semantic list numbering. Decorative only. */
+.journey-step-link::before { content: counter(journey); display: inline-flex; align-items: center; justify-content: center; width: 1.6rem; height: 1.6rem; border-radius: 50%; background: var(--accent); color: white; font-weight: 750; font-size: .85rem; flex: none; }
+.journey-step[data-state="upcoming"] .journey-step-link::before { background: var(--muted); }
 .journey-step-label { overflow-wrap: anywhere; }
 .step-eyebrow { color: var(--accent); font-weight: 750; text-transform: uppercase; letter-spacing: .08em; font-size: .74rem; margin: 0 0 .25rem; }
 .local-file { margin-block: 1rem; }
 .field-hint { color: var(--muted); font-size: .9rem; margin-top: .3rem; }
+.jump-hint { margin-top: .75rem; font-size: .95rem; }
 .starter-publisher { display: inline-block; margin-top: .2rem; font-size: .9rem; }
 .workspace-settings { width: min(74rem, calc(100% - 2rem)); margin-inline: auto; display: grid; gap: 1.2rem; margin-top: 2.5rem; padding-top: 1.5rem; border-top: 2px solid var(--border); }
 .workspace-settings > h2 { margin-bottom: 0; }
