@@ -24,6 +24,7 @@ import { buildFactPacket } from "./ai/summary.js";
 
 const LOCAL_MODEL_ID = "onnx-community/Qwen2.5-0.5B-Instruct";
 const LOCAL_MODEL_REVISION = "cc5cc01a65cc3ff17bdb73a7de33d879f62599b0";
+import { describeModelDownload } from "./ai/providers.js";
 import { analyzeJoinCandidate, joinPreview, validateJoinCandidate, joinComparison } from "./catalog/relationships.js";
 
 const elements = Object.fromEntries([
@@ -1553,7 +1554,7 @@ function renderCapabilityReport(report, decision) {
     container.append(localPlanner);
     const localNote = document.createElement("p");
     localNote.className = "notice";
-    localNote.textContent = "Heads up: this optional local planner downloads about 500 MB and loads it into your graphics (WebGPU) memory. On computers with limited memory — roughly 8 GB or less, including many laptops — that can make the whole computer unresponsive and force a restart. It runs off the main thread, so the page stays responsive, but that does not protect the rest of your system. Nothing is downloaded until you approve it, and deterministic planning works without it.";
+    localNote.textContent = `Heads up: this optional local planner downloads ${describeModelDownload(LOCAL_MODEL_ID)} and loads it into your graphics (WebGPU) memory. On computers with limited memory — roughly 8 GB or less, including many laptops — that can make the whole computer unresponsive and force a restart. It runs off the main thread, so the page stays responsive, but that does not protect the rest of your system. Nothing is downloaded until you approve it, and deterministic planning works without it.`;
     container.append(localNote);
   } else if (currentDataset && currentFields.length) {
     const localNote = document.createElement("p");
@@ -1635,7 +1636,7 @@ async function runHuggingFacePlanner() {
     setStatus(`The local model cannot run here. ${gpu.reason} Deterministic planning remains available.`, "error");
     return;
   }
-  if (!window.confirm("Download and run the optional local model? The browser will manage about 500 MB of model files and load them into your graphics (WebGPU) memory.\n\nWarning: on computers with limited memory (roughly 8 GB or less), this can make the whole computer unresponsive and may force a restart. The page itself stays responsive because the model runs off the main thread, but that does not protect the rest of your system.\n\nDeterministic planning works without it.")) return;
+  if (!window.confirm(`Download and run the optional local model? The browser will manage ${describeModelDownload(LOCAL_MODEL_ID)} of model files and load them into your graphics (WebGPU) memory.\n\nWarning: on computers with limited memory (roughly 8 GB or less), this can make the whole computer unresponsive and may force a restart. The page itself stays responsive because the model runs off the main thread, but that does not protect the rest of your system.\n\nDeterministic planning works without it.`)) return;
   plannerAbortController = new AbortController();
   const cancel = document.createElement("button");
   cancel.type = "button";
@@ -1740,10 +1741,10 @@ function describeSummaryOption(decision, compute) {
   if (!webgpu) {
     return { kind: "none", label: "No local AI available", reason: compute?.webgpuReason || "" };
   }
-  return { kind: "local", label: "Local Hugging Face model", needsDownload: true, warning: "This loads about 500 MB into your graphics (WebGPU) memory. On computers with limited memory (roughly 8 GB or less), that can make the whole computer unresponsive and force a restart.", rows: [
+  return { kind: "local", label: "Local Hugging Face model", needsDownload: true, warning: `This loads ${describeModelDownload(LOCAL_MODEL_ID)} into your graphics (WebGPU) memory. On computers with limited memory (roughly 8 GB or less), that can make the whole computer unresponsive and force a restart.`, rows: [
     ["Provider", "Local Hugging Face model"],
     ["Model", `${LOCAL_MODEL_ID} (revision ${LOCAL_MODEL_REVISION})`],
-    ["Download", "About 500 MB, started only after you approve it"],
+    ["Download", `${describeModelDownload(LOCAL_MODEL_ID)}, started only after you approve it`],
     ["Runs on", "WebGPU graphics memory, in a background worker. The page stays responsive, but on low-memory computers the rest of your system may not"],
     ["Memory warning", "On machines with limited memory (roughly 8 GB or less), loading the model can freeze the whole computer and force a restart"],
     ["Hosting", "Downloaded from the Hugging Face CDN and cached by your browser"],

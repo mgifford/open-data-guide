@@ -1,5 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
-import { createChromePromptProvider, createHuggingFaceProvider, deterministicProvider, localModelSupported, providerDecision, validateProviderPlan } from "../src/ai/providers.js";
+import { createChromePromptProvider, createHuggingFaceProvider, deterministicProvider, describeModelDownload, localModelSupported, modelDownloadSizeMb, providerDecision, validateProviderPlan } from "../src/ai/providers.js";
+
+describe("model download size disclosure", () => {
+  it("reports the reviewed size for the shipped model and dtype", () => {
+    expect(modelDownloadSizeMb("onnx-community/Qwen2.5-0.5B-Instruct", "q4")).toBe(500);
+    expect(describeModelDownload("onnx-community/Qwen2.5-0.5B-Instruct", "q4")).toBe("about 500 MB");
+  });
+
+  it("formats sizes at or above 1000 MB as GB", () => {
+    expect(describeModelDownload("onnx-community/Qwen2.5-0.5B-Instruct", "q4")).toMatch(/MB/);
+    // A hypothetical large entry would read as GB (formatting is size-driven).
+    expect(describeModelDownload("unknown/model", "q4")).toBe("size not known in advance");
+  });
+});
 
 // Minimal fake of a module worker: routes postMessage to a responder that emits
 // the messages the real worker would, so the provider can be tested without CDN.
