@@ -34,6 +34,12 @@ test.describe("station map from inferred coordinates", () => {
     // Required OpenStreetMap attribution is present.
     await expect(page.locator("#geo-map .leaflet-control-attribution")).toContainText("OpenStreetMap");
 
+    // The view is fitted to the data, not left at the whole repeating world:
+    // four California cities span a few degrees, so the fitted zoom is well in.
+    await expect
+      .poll(async () => Number(await page.locator("#geo-map .geo-map-canvas").getAttribute("data-fitted-zoom")))
+      .toBeGreaterThanOrEqual(5);
+
     // The basemap requests tiles from OpenStreetMap (the documented trade-off);
     // the request fires even if the environment blocks the response.
     await expect.poll(() => tileRequests.length).toBeGreaterThan(0);
